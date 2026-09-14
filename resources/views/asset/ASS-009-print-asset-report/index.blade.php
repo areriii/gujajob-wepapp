@@ -62,6 +62,7 @@
                         <div class="dropdown-suggestions" id="categorySuggestions" style="display: none;"></div>
                         <input id="categoryId" type="hidden">
                     </div>
+                    <span class="report-field-error" id="categoryError">@error('category_id'){{ $message }}@enderror</span>
                 </div>
 
                 <div class="field-group">
@@ -73,6 +74,7 @@
                         <input id="assetId" type="hidden">
                     </div>
                     <span class="field-hint" id="assetSearchHint">กรุณาเลือกประเภทครุภัณฑ์ก่อน</span>
+                    <span class="report-field-error" id="assetError">@error('asset_id'){{ $message }}@enderror</span>
                 </div>
             </div>
 
@@ -81,6 +83,7 @@
                 <div class="field-group">
                     <label class="field-label">ปีงบประมาณ (พ.ศ.)</label>
                     <input id="fiscalYear" type="text" placeholder="เช่น 2567" class="text-input">
+                    <span class="report-field-error" id="fiscalYearError">@error('fiscal_year'){{ $message }}@enderror</span>
                 </div>
 
                 <div class="field-group">
@@ -91,6 +94,7 @@
                         <div class="dropdown-suggestions" id="orgSuggestions" style="display: none;"></div>
                         <input id="orgId" type="hidden">
                     </div>
+                    <span class="report-field-error" id="orgError">@error('org_id'){{ $message }}@enderror</span>
                 </div>
 
                 <div class="field-group">
@@ -101,6 +105,7 @@
                         <div class="dropdown-suggestions" id="subOrgSuggestions" style="display: none;"></div>
                         <input id="subOrgId" type="hidden">
                     </div>
+                    <span class="report-field-error" id="subOrgError">@error('sub_org_id'){{ $message }}@enderror</span>
                 </div>
             </div>
 
@@ -120,7 +125,11 @@
                 </div>
 
                 <div class="export-actions">
-                    <button class="preview-btn" type="button" id="previewReportButton">
+                        <button class="preview-btn" type="button" id="previewReportButton"
+                            data-register-url="{{ route('asset.reports.register') }}"
+                                data-ledger-url="{{ route('asset.reports.ledger') }}"
+                            data-register-export-url="{{ route('asset.reports.register.export') }}"
+                            data-ledger-export-url="{{ route('asset.reports.ledger.export') }}">
                         <svg><use href="#icon-printer"></use></svg>
                         <span>พรีวิว</span>
                     </button>

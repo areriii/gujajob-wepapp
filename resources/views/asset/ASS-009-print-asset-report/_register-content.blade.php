@@ -5,12 +5,6 @@
         $asset->ass_model ? 'รุ่น: ' . $asset->ass_model : null,
         $asset->ass_serail ? 'Serial No.: ' . $asset->ass_serail : null,
     ])->filter();
-    $annualDepreciation = $asset->ass_price !== null && $asset->depreciation_rate !== null
-        ? (float) $asset->ass_price * (float) $asset->depreciation_rate / 100
-        : null;
-    $accumulatedDepreciation = $asset->ass_price !== null && $asset->remain_price !== null
-        ? max(0, (float) $asset->ass_price - (float) $asset->remain_price)
-        : null;
     $document = collect([$asset->ass_contact_no, $asset->ass_contact_date_th])->filter()->implode(' / ');
     $governmentDepartment = strtoupper(trim((string) ($asset->org_zone_flg ?? ''))) === 'C'
         ? 'กรมส่งเสริมสหกรณ์'
@@ -38,20 +32,37 @@
 
         <div class="report-table asset-control-table-wrap">
             <table class="asset-control-table">
+                <colgroup>
+                    <col style="width: 7%;">
+                    <col style="width: 8%;">
+                    <col style="width: 28%;">
+                    <col style="width: 6%;">
+                    <col style="width: 8%;">
+                    <col style="width: 8%;">
+                    <col style="width: 6%;">
+                    <col style="width: 6%;">
+                    <col style="width: 7%;">
+                    <col style="width: 7%;">
+                    <col style="width: 7%;">
+                    <col style="width: 8%;">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>วัน เดือน ปี</th>
-                        <th>เลขที่เอกสาร</th>
-                        <th>รายละเอียดครุภัณฑ์/สิ่งก่อสร้าง</th>
+                        <th rowspan="2">วัน เดือน ปี</th>
+                        <th rowspan="2">เลขที่เอกสาร</th>
+                        <th colspan="6">รายละเอียดครุภัณฑ์/สิ่งก่อสร้าง</th>
+                        <th rowspan="2">ค่าเสื่อมราคา<br>ประจำปี</th>
+                        <th rowspan="2">ค่าเสื่อมราคา<br>สะสม</th>
+                        <th rowspan="2">มูลค่าสุทธิ</th>
+                        <th rowspan="2">หมายเหตุ</th>
+                    </tr>
+                    <tr>
+                        <th>ชื่อสินทรัพย์ คำอธิบายและรายละเอียด<br>ลักษณะ/คุณสมบัติ/ขนาด/ยี่ห้อ/รุ่น/<br>แบบ/หมายเลขเครื่อง/</th>
                         <th>จำนวน<br>(หน่วย)</th>
                         <th>ราคาต่อหน่วย/<br>ชุด/กลุ่ม</th>
                         <th>มูลค่ารวม</th>
                         <th>อายุการ<br>ใช้งาน</th>
                         <th>อัตรา<br>ค่าเสื่อมราคา</th>
-                        <th>ค่าเสื่อมราคา<br>ประจำปี</th>
-                        <th>ค่าเสื่อมราคา<br>สะสม</th>
-                        <th>มูลค่าสุทธิ</th>
-                        <th>หมายเหตุ</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -64,11 +75,22 @@
                         <td class="number-cell">{{ $asset->ass_price !== null ? number_format((float) $asset->ass_price, 2) : '-' }}</td>
                         <td class="number-cell">{{ $asset->ass_lifetime !== null ? number_format((float) $asset->ass_lifetime, 0) : '-' }}</td>
                         <td class="number-cell">{{ $asset->depreciation_rate !== null ? number_format((float) $asset->depreciation_rate, 2) . '%' : '-' }}</td>
-                        <td class="number-cell">{{ $annualDepreciation !== null ? number_format($annualDepreciation, 2) : '-' }}</td>
-                        <td class="number-cell">{{ $accumulatedDepreciation !== null ? number_format($accumulatedDepreciation, 2) : '-' }}</td>
-                        <td class="number-cell">{{ $asset->remain_price !== null ? number_format((float) $asset->remain_price, 2) : '-' }}</td>
+                        <td class="number-cell">{{ $asset->annual_depreciation !== null ? number_format((float) $asset->annual_depreciation, 2) : '-' }}</td>
+                        <td class="number-cell">0.00</td>
+                        <td class="number-cell">{{ $asset->ass_price !== null ? number_format((float) $asset->ass_price, 2) : '-' }}</td>
                         <td>{{ $asset->remarks ?? '-' }}</td>
                     </tr>
+                    @foreach (($asset->depreciation_periods ?? []) as $period)
+                        <tr class="depreciation-calculation-row">
+                            <td></td>
+                            <td></td>
+                            <td colspan="6">{{ $period['label'] }}</td>
+                            <td class="number-cell">{{ number_format((float) $period['depreciation'], 2) }}</td>
+                            <td class="number-cell">{{ number_format((float) $period['accumulated'], 2) }}</td>
+                            <td class="number-cell">{{ number_format((float) $period['net_value'], 2) }}</td>
+                            <td></td>
+                        </tr>
+                    @endforeach
                 </tbody>
             </table>
         </div>

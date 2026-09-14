@@ -9,21 +9,14 @@ class SearchableDropdown {
         if (!this.input) return;
         
         this.debounceTimer = null;
-        this.requestId = 0;
         this.init();
     }
     
     init() {
         this.input.addEventListener('input', () => this.handleInput());
         this.input.addEventListener('focus', () => {
-            if (this.options.isBlocked?.()) {
-                return;
-            }
-
             if (this.input.value.length > 0) {
-                this.fetchSuggestions(this.input.value.trim());
-            } else if (this.options.loadOnFocus) {
-                this.fetchSuggestions('');
+                this.suggestionsContainer.style.display = 'block';
             }
         });
         
@@ -43,12 +36,7 @@ class SearchableDropdown {
         this.hiddenInput.value = '';
         this.options.onChange?.();
         
-        if (this.options.isBlocked?.()) {
-            this.suggestionsContainer.style.display = 'none';
-            return;
-        }
-
-        if (query.length === 0 && !this.options.loadOnFocus) {
+        if (query.length === 0 || this.options.isBlocked?.()) {
             this.suggestionsContainer.style.display = 'none';
             return;
         }
@@ -59,18 +47,12 @@ class SearchableDropdown {
     }
     
     fetchSuggestions(query) {
-        const requestId = ++this.requestId;
         const params = new URLSearchParams({ q: query, ...(this.options.extraParams?.() ?? {}) });
         
         fetch(`${this.apiUrl}?${params.toString()}`)
             .then(response => response.json())
-            .then(payload => {
-                if (requestId === this.requestId) {
-                    this.renderSuggestions(Array.isArray(payload) ? payload : payload?.data);
-                }
-            })
+            .then(payload => this.renderSuggestions(Array.isArray(payload) ? payload : payload?.data))
             .catch(error => {
-                if (requestId !== this.requestId) return;
                 console.error('Error fetching suggestions:', error);
                 this.suggestionsContainer.style.display = 'none';
             });
@@ -80,15 +62,7 @@ class SearchableDropdown {
         this.suggestionsContainer.innerHTML = '';
         
         if (!Array.isArray(data) || data.length === 0) {
-            if (this.options.emptyMessage) {
-                const emptyItem = document.createElement('div');
-                emptyItem.className = 'suggestion-item suggestion-empty';
-                emptyItem.textContent = this.options.emptyMessage;
-                this.suggestionsContainer.appendChild(emptyItem);
-                this.suggestionsContainer.style.display = 'block';
-            } else {
-                this.suggestionsContainer.style.display = 'none';
-            }
+            this.suggestionsContainer.style.display = 'none';
             return;
         }
         
@@ -104,9 +78,7 @@ class SearchableDropdown {
     }
     
     formatSuggestion(item) {
-        if (item.label) {
-            return item.label;
-        } else if (item.code && item.name) {
+        if (item.code && item.name) {
             return `${item.code} - ${item.name}`;
         } else if (item.name) {
             return item.name;
@@ -124,7 +96,6 @@ class SearchableDropdown {
     clear() {
         if (!this.input) return;
         clearTimeout(this.debounceTimer);
-        this.requestId++;
         this.input.value = '';
         this.hiddenInput.value = '';
         this.suggestionsContainer.innerHTML = '';
@@ -182,41 +153,108 @@ function syncAssetFieldState() {
 // Preview button
 function initPreviewButton() {
     const previewBtn = document.getElementById('previewReportButton');
-    
-    previewBtn?.addEventListener('click', () => {
+    const exportFormatInputs = document.querySelectorAll('input[name="exportFormat"]');
+    const isExcelTestMode = new URLSearchParams(window.location.search).get('xlsx_test') === '1';
+
+    const setActionLabel = () => {
+        const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
+        previewBtn?.classList.toggle('download-btn', isExcel);
+        previewBtn?.classList.toggle('preview-btn', !isExcel);
+        const label = previewBtn?.querySelector('span');
+        if (label) label.textContent = isExcel ? 'ดาวน์โหลด' : 'พรีวิว';
+    };
+
+    exportFormatInputs.forEach((input) => input.addEventListener('change', setActionLabel));
+    setActionLabel();
+
+    const openTestPopup = (html) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'pdf-test-modal';
+        overlay.innerHTML = `
+            <div class="pdf-test-modal__dialog">
+                <button type="button" class="pdf-test-modal__close">ปิด</button>
+                <iframe class="pdf-test-modal__frame" title="Excel layout test"></iframe>
+            </div>
+        `;
+        const frame = overlay.querySelector('iframe');
+        frame.srcdoc = html;
+        const close = () => overlay.remove();
+        overlay.querySelector('.pdf-test-modal__close').addEventListener('click', close);
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) close();
+        });
+        document.body.appendChild(overlay);
+    };
+
+    const requestExcel = async (url) => {
+        if (!isExcelTestMode) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.rel = 'noopener';
+            link.download = 'asset-report.xlsx';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            return;
+        }
+
+        const response = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { Accept: 'text/html, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+        });
+        if (!response.ok) throw new Error(`Excel request failed with status ${response.status}`);
+
+        openTestPopup(await response.text());
+    };
+
+    previewBtn?.addEventListener('click', async () => {
         const registerConditions = document.getElementById('registerConditions');
         const isRegisterType = registerConditions.style.display !== 'none';
-        
+
         if (isRegisterType) {
-            // Type 1: Asset Register
             const categoryId = document.getElementById('categoryId').value;
             const assetId = document.getElementById('assetId').value;
-            
-            let url = '/asset/ASS-009-print-asset-report/report-register';
+            if (!categoryId || !assetId) return;
+
             const params = new URLSearchParams();
-            if (categoryId) params.append('category_id', categoryId);
-            if (assetId) params.append('asset_id', assetId);
-            if (params.toString()) url += '?' + params.toString();
-            
-            window.location.href = url;
+            params.set('category_id', categoryId);
+            params.set('asset_id', assetId);
+
+            const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
+            if (isExcel) {
+                if (isExcelTestMode) params.set('xlsx_test', '1');
+                try {
+                    await requestExcel(`${previewBtn.dataset.registerExportUrl}?${params}`);
+                } catch (error) {
+                    console.error('Failed to generate the Excel export:', error);
+                }
+                return;
+            }
+
+            window.location.href = `${previewBtn.dataset.registerUrl}?${params}`;
         } else {
-            // Type 2: Asset Ledger
             const fiscalYear = document.getElementById('fiscalYear').value;
             const orgId = document.getElementById('orgId').value;
             const subOrgId = document.getElementById('subOrgId').value;
-            
-            if (!fiscalYear) {
-                alert('กรุณาระบุปีงบประมาณ');
-                return;
-            }
-            
-            let url = '/asset/ASS-009-print-asset-report/report-ledger';
+            if (!fiscalYear) return;
+
             const params = new URLSearchParams();
             params.append('fiscal_year', fiscalYear);
             if (orgId) params.append('org_id', orgId);
             if (subOrgId) params.append('sub_org_id', subOrgId);
-            
-            window.location.href = url + '?' + params.toString();
+
+            const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
+            if (isExcel) {
+                if (isExcelTestMode) params.set('xlsx_test', '1');
+                try {
+                    await requestExcel(`${previewBtn.dataset.ledgerExportUrl}?${params}`);
+                } catch (error) {
+                    console.error('Failed to generate the ledger Excel export:', error);
+                }
+                return;
+            }
+
+            window.location.href = `${previewBtn.dataset.ledgerUrl}?${params}`;
         }
     });
 }
@@ -240,19 +278,17 @@ document.addEventListener('DOMContentLoaded', () => {
     dropdowns.asset = new SearchableDropdown('#assetSearch', '#assetSuggestions', '#assetId', '/api/asset/search', {
         isBlocked: () => !document.getElementById('categoryId').value,
         extraParams: () => ({ category_id: document.getElementById('categoryId').value }),
-        emptyMessage: 'ไม่พบรหัสครุภัณฑ์ในประเภทที่เลือก',
-        loadOnFocus: true,
     });
     dropdowns.org = new SearchableDropdown('#orgSearch', '#orgSuggestions', '#orgId', '/api/asset/organizations/search', {
         onSelect: () => dropdowns.subOrg?.clear(),
         onChange: () => dropdowns.subOrg?.clear(),
     });
     dropdowns.subOrg = new SearchableDropdown('#subOrgSearch', '#subOrgSuggestions', '#subOrgId', '/api/asset/sub-organizations/search', {
+        isBlocked: () => !document.getElementById('orgId').value,
         extraParams: () => ({ parent_org_id: document.getElementById('orgId').value }),
     });
     
     syncAssetFieldState();
     
-    // Initialize buttons
     initPreviewButton();
 });

@@ -151,6 +151,15 @@
     font-weight: 500;
 }
 
+.report-field-error {
+    display: block;
+    min-height: 15px;
+    margin-top: 3px;
+    color: #dc2626;
+    font-size: 11px;
+    line-height: 1.3;
+}
+
 .report-inline-validation-error {
     margin: 0 0 14px;
     padding: 10px 12px;

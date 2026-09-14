@@ -20,9 +20,9 @@
                         <svg><use href="#icon-report-file"></use></svg>
                     </span>
 
-                    <span class="report-name">รายงานวัสดุคงคลัง</span>
+                    <span class="report-name">รายงานวัสดุคงเหลือ</span>
                     <span class="report-description">
-                        แสดงข้อมูลวัสดุคงคลังปัจจุบัน พร้อมจำนวนคงเหลือ แยกตามประเภทวัสดุและหน่วยงาน
+                        แสดงข้อมูลวัสดุคงเหลือปัจจุบัน พร้อมจำนวนคงเหลือ
                     </span>
                 </button>
 
@@ -56,30 +56,25 @@
                 <span>ส่วนที่ 2: กำหนดเงื่อนไขการออกรายงาน</span>
             </div>
 
-            <div class="condition-grid">
+            <div class="condition-grid material-report-grid">
                 <div class="field-group">
-                    <label for="budgetYear">ปีงบประมาณ</label>
-                    <input id="budgetYear" type="text" value="2567" autocomplete="off">
-                </div>
-
-                <div class="field-group">
-                    <label for="mainDepartment">หน่วยงานหลัก</label>
-                    <select id="mainDepartment">
-                        <option value="ศูนย์เทคโนโลยีสารสนเทศ" selected>ศูนย์เทคโนโลยีสารสนเทศ</option>
-                        <option value="กองคลังพัสดุ">กองคลังพัสดุ</option>
-                        <option value="สำนักบริหารกลาง">สำนักบริหารกลาง</option>
-                        <option value="ฝ่ายเทคโนโลยีสารสนเทศ">ฝ่ายเทคโนโลยีสารสนเทศ</option>
-                    </select>
+                    <label for="mainDepartment">หน่วยงาน</label>
+                    <div class="searchable-field">
+                        <input id="mainDepartment" type="text" class="searchable-input" placeholder="ค้นหาหน่วยงาน..." autocomplete="off" data-search-url="{{ route('material.report.organizations.search') }}">
+                        <div class="dropdown-suggestions" id="mainDepartmentSuggestions" style="display:none"></div>
+                        <input id="mainDepartmentId" type="hidden">
+                    </div>
+                    <span class="report-field-error" id="orgError">@error('org_id'){{ $message }}@enderror</span>
                 </div>
 
                 <div class="field-group">
                     <label for="subDepartment">หน่วยงานย่อย</label>
-                    <select id="subDepartment">
-                        <option value="ทั้งหมด" selected>-- ทั้งหมด --</option>
-                        <option value="งานคลังวัสดุ">งานคลังวัสดุ</option>
-                        <option value="งานทะเบียน">งานทะเบียน</option>
-                        <option value="งานสารสนเทศ">งานสารสนเทศ</option>
-                    </select>
+                    <div class="searchable-field">
+                        <input id="subDepartment" type="text" class="searchable-input" placeholder="ค้นหาหน่วยงานย่อย..." autocomplete="off" disabled data-search-url="{{ route('material.report.sub-organizations.search') }}">
+                        <div class="dropdown-suggestions" id="subDepartmentSuggestions" style="display:none"></div>
+                        <input id="subDepartmentId" type="hidden">
+                    </div>
+                    <span class="report-field-error" id="subOrgError">@error('sub_org_id'){{ $message }}@enderror</span>
                 </div>
             </div>
 
@@ -99,34 +94,15 @@
                 </div>
 
                 <div class="export-actions">
-                    <button class="preview-btn" type="button" id="previewReportButton">
+                    <button class="preview-btn" type="button" id="previewReportButton" data-preview-url="{{ route('material.report.stock') }}" data-export-url="{{ route('material.report.stock.export') }}">
                         <svg><use href="#icon-printer"></use></svg>
-                        <span>พิมพ์รายงาน / พรีวิว</span>
-                    </button>
-
-                    <button class="download-btn" type="button" id="downloadReportButton">
-                        <svg><use href="#icon-download-report"></use></svg>
-                        <span>ดาวน์โหลดไฟล์</span>
+                        <span>พรีวิว</span>
                     </button>
                 </div>
             </div>
         </section>
     </div>
 
-    <div class="confirm-overlay" id="reportPreviewOverlay" aria-hidden="true">
-        <div class="confirm-modal" role="dialog" aria-modal="true">
-            <div class="confirm-icon preview-confirm-icon">
-                <svg><use href="#icon-printer"></use></svg>
-            </div>
-
-            <h3>พรีวิวรายงาน</h3>
-            <p id="previewReportText">ระบบกำลังเตรียมพรีวิวรายงาน</p>
-
-            <div class="single-confirm-action">
-                <button class="modal-confirm-btn" type="button" id="closePreviewReportButton">ตกลง</button>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('page-script')

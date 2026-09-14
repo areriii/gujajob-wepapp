@@ -94,79 +94,82 @@ function closeOverlay(overlay) {
 function initializeMaterialReportPage() {
     const reportTypeButtons = document.querySelectorAll('.report-type-item');
     const previewButton = document.getElementById('previewReportButton');
-    const downloadButton = document.getElementById('downloadReportButton');
-    const overlay = document.getElementById('reportPreviewOverlay');
-    const closeButton = document.getElementById('closePreviewReportButton');
-    const previewText = document.getElementById('previewReportText');
 
-    const budgetYear = document.getElementById('budgetYear');
     const mainDepartment = document.getElementById('mainDepartment');
     const subDepartment = document.getElementById('subDepartment');
+    const mainDepartmentId = document.getElementById('mainDepartmentId');
+    const subDepartmentId = document.getElementById('subDepartmentId');
 
     if (!reportTypeButtons.length) {
         return;
     }
 
-    const reportNames = {
-        stock: 'รายงานวัสดุคงคลัง',
-        receiving: 'รายงานรับวัสดุ',
-        withdraw: 'รายงานเบิกวัสดุ',
-    };
-
-    let selectedReportType = 'stock';
-
-    function getSelectedFormat() {
-        const selected = document.querySelector('input[name="exportFormat"]:checked');
-        return selected ? selected.value : 'pdf';
+    function autocomplete(input, hidden, suggestions, url, extraParams, onSelect) {
+        let timer;
+        input.addEventListener('input', () => {
+            hidden.value = '';
+            onSelect?.(null);
+            clearTimeout(timer);
+            const query = input.value.trim();
+            if (!query) { suggestions.innerHTML = ''; suggestions.style.display = 'none'; return; }
+            timer = setTimeout(async () => {
+                const params = new URLSearchParams({ q: query, ...extraParams() });
+                const payload = await fetch(`${url}?${params}`).then((r) => r.json());
+                suggestions.innerHTML = '';
+                (payload.data || []).forEach((item) => {
+                    const option = document.createElement('div');
+                    option.className = 'suggestion-item'; option.textContent = item.label;
+                    option.addEventListener('click', () => { input.value = item.label; hidden.value = item.id; suggestions.style.display = 'none'; onSelect?.(item); });
+                    suggestions.appendChild(option);
+                });
+                suggestions.style.display = suggestions.children.length ? 'block' : 'none';
+            }, 300);
+        });
     }
 
-    function getSelectedReportName() {
-        return reportNames[selectedReportType] || 'รายงานวัสดุ';
-    }
-
-    function buildConditionText(actionText) {
-        const format = getSelectedFormat() === 'pdf' ? 'PDF Document (.pdf)' : 'Excel Spreadsheet (.xlsx)';
-
-        return `${actionText} ${getSelectedReportName()} รูปแบบ ${format}<br>
-            ปีงบประมาณ ${budgetYear.value || '-'}<br>
-            หน่วยงานหลัก ${mainDepartment.value || '-'}<br>
-            หน่วยงานย่อย ${subDepartment.value || '-'}`;
-    }
+    mainDepartment.addEventListener('input', () => { document.getElementById('orgError').textContent = ''; });
+    subDepartment.addEventListener('input', () => { document.getElementById('subOrgError').textContent = ''; });
+    autocomplete(mainDepartment, mainDepartmentId, document.getElementById('mainDepartmentSuggestions'), mainDepartment.dataset.searchUrl, () => ({}), () => {
+        subDepartment.value = ''; subDepartmentId.value = ''; subDepartment.disabled = !mainDepartmentId.value;
+        document.getElementById('subOrgError').textContent = '';
+    });
+    autocomplete(subDepartment, subDepartmentId, document.getElementById('subDepartmentSuggestions'), subDepartment.dataset.searchUrl, () => ({ parent_org_id: mainDepartmentId.value }), () => {});
 
     reportTypeButtons.forEach((button) => {
         button.addEventListener('click', () => {
             reportTypeButtons.forEach((item) => item.classList.remove('active'));
 
             button.classList.add('active');
-            selectedReportType = button.dataset.reportType;
         });
     });
 
     if (previewButton) {
+        mainDepartment?.addEventListener('change', () => { document.getElementById('orgError').textContent = ''; });
+        subDepartment?.addEventListener('change', () => { document.getElementById('subOrgError').textContent = ''; });
+        const updateAction = () => {
+            const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
+            previewButton.classList.toggle('download-btn', isExcel);
+            previewButton.classList.toggle('preview-btn', !isExcel);
+            previewButton.querySelector('span').textContent = isExcel ? 'ดาวน์โหลด' : 'พรีวิว';
+            previewButton.querySelector('use').setAttribute('href', isExcel ? '#icon-download-report' : '#icon-printer');
+        };
+
+        document.querySelectorAll('input[name="exportFormat"]').forEach((input) => input.addEventListener('change', updateAction));
+        updateAction();
+
         previewButton.addEventListener('click', () => {
-            previewText.innerHTML = buildConditionText('ระบบกำลังเตรียมพรีวิว');
-            openOverlay(overlay);
-        });
-    }
-
-    if (downloadButton) {
-        downloadButton.addEventListener('click', () => {
-            previewText.innerHTML = buildConditionText('ระบบกำลังเตรียมดาวน์โหลด');
-            openOverlay(overlay);
-        });
-    }
-
-    if (closeButton) {
-        closeButton.addEventListener('click', () => {
-            closeOverlay(overlay);
-        });
-    }
-
-    if (overlay) {
-        overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) {
-                closeOverlay(overlay);
-            }
+            document.getElementById('orgError').textContent = '';
+            document.getElementById('subOrgError').textContent = '';
+            const orgId = mainDepartmentId.value;
+            const subOrgId = subDepartmentId.value;
+            if (!orgId || orgId === '0') document.getElementById('orgError').textContent = 'กรุณากรอกข้อมูล';
+            if (!subOrgId || subOrgId === '0') document.getElementById('subOrgError').textContent = 'กรุณากรอกข้อมูล';
+            if (!orgId || orgId === '0' || !subOrgId || subOrgId === '0') return;
+            const params = new URLSearchParams({ org_id: orgId, sub_org_id: subOrgId });
+            const target = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx'
+                ? previewButton.dataset.exportUrl
+                : previewButton.dataset.previewUrl;
+            window.location.href = `${target}?${params}`;
         });
     }
 }

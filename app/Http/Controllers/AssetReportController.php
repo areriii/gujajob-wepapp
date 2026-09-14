@@ -3,22 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Services\OrganizationVisibilityService;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\AssetDepreciationCalculator;
+use App\Services\XlsxReportService;
 
 class AssetReportController extends Controller
 {
     private const PER_PAGE = 10;
 
-    /** รอจัดสรร, จำหน่ายแล้ว, ชำรุด, สูญหาย — excluded from the fiscal-year ledger report. */
-    private const LEDGER_EXCLUDED_STATUSES = ['1', '4', '5', '6'];
-
-    public function __construct(private readonly OrganizationVisibilityService $orgVisibility) {}
+    public function __construct(
+        private readonly OrganizationVisibilityService $orgVisibility,
+        private readonly AssetDepreciationCalculator $depreciationCalculator,
+        private readonly XlsxReportService $xlsx,
+    ) {}
 
     /**
      * Display the asset report form
@@ -73,42 +76,36 @@ class AssetReportController extends Controller
         $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
 
         // An asset code is only searchable within a chosen category.
-        if (empty($visibleOrgIds) || $categoryId <= 0) {
+        if ($keyword === '' || empty($visibleOrgIds) || $categoryId <= 0) {
             return response()->json(['data' => []]);
         }
+
+        $escaped = $this->escapeLike($keyword);
 
         $assets = DB::connection('oracle')
             ->table('ASSET')
             ->join('ASSET_CATEGORY', 'ASSET.asscat_id', '=', 'ASSET_CATEGORY.id')
-            ->selectRaw("ASSET.id, ASSET.asscat_id AS category_id, ASSET.ass_code, ASSET_CATEGORY.asscat_name, ASSET_CATEGORY.asscat_code,
+            ->selectRaw("ASSET.id, ASSET.ass_code, ASSET_CATEGORY.asscat_name, ASSET_CATEGORY.asscat_code,
                 (SELECT MAX(aa2.status) KEEP (DENSE_RANK LAST ORDER BY aa2.id)
                  FROM ASSET_ASSIGNMENT_LIST aal2
                  JOIN ASSET_ASSIGNMENT aa2 ON aa2.id = aal2.ass_assign_id
                  WHERE aal2.asset_id = ASSET.id) AS aa_status")
             ->whereIn('ASSET.org_id', $visibleOrgIds)
-            ->where('ASSET.asscat_id', $categoryId);
-
-        if ($keyword !== '') {
-            $escaped = $this->escapeLike($keyword);
-            $assets->whereRaw(
-                "(UPPER(ASSET.ass_code) LIKE UPPER(?) OR UPPER(ASSET_CATEGORY.asscat_code || ASSET.ass_code) LIKE UPPER(?))",
-                ["%{$escaped}%", "%{$escaped}%"]
-            );
-        }
-
-        $assets = $assets
+            ->where('ASSET.asscat_id', $categoryId)
+            ->whereRaw("UPPER(ASSET.ass_code) LIKE UPPER(?)", ["%{$escaped}%"])
             ->orderBy('ASSET.ass_code')
             ->limit(20)
             ->get();
 
         $data = $assets->map(fn ($a) => [
             'id'    => $a->id,
-            'category_id' => $a->category_id,
-            'code'  => $a->ass_code,
+            'code'  => ((string) ($a->aa_status ?? '') === '2' && trim((string) $a->ass_code) !== '')
+                ? trim($a->asscat_code . ' ' . $a->ass_code)
+                : $a->asscat_code,
             'name'  => $a->asscat_name,
-            'label' => ((string) ($a->aa_status ?? '') === '2' && trim((string) $a->ass_code) !== '')
-                ? "{$a->asscat_code} {$a->ass_code} — {$a->asscat_name}"
-                : "{$a->asscat_code} — {$a->asscat_name}",
+            'label' => (((string) ($a->aa_status ?? '') === '2' && trim((string) $a->ass_code) !== '')
+                ? trim($a->asscat_code . ' ' . $a->ass_code)
+                : $a->asscat_code) . " — {$a->asscat_name}",
         ]);
 
         return response()->json(['data' => $data]);
@@ -200,18 +197,18 @@ class AssetReportController extends Controller
                 ->withErrors(['report' => $error]);
         }
 
-        $assets = $this->assetRegisterQuery($visibleOrgIds, $categoryId, $assetId)
-            ->orderBy('ASSET.ass_code')
-            ->get();
+        $assets = $this->attachDepreciationData(
+            $this->assetRegisterQuery($visibleOrgIds, $categoryId, $assetId)->orderBy('ASSET.ass_code')->get(),
+            $request
+        );
 
         return view('asset.ASS-009-print-asset-report.report-register', [
-            'pageTitle'   => 'ทะเบียนคุมครุภัณฑ์',
-            'assets'      => $assets,
+            'pageTitle' => 'ทะเบียนคุมครุภัณฑ์',
+            'assets'    => $assets,
             'generatedAt' => now('Asia/Bangkok')->addYears(543)->format('d/m/Y H.i') . ' น.',
         ]);
     }
 
-    /** Download the current asset register preview as an A4 landscape PDF. */
     public function downloadAssetRegister(Request $request)
     {
         $categoryId = (int) $request->input('category_id', 0);
@@ -222,41 +219,93 @@ class AssetReportController extends Controller
             return redirect()->route('asset.reports.index')->withErrors(['report' => $error]);
         }
 
-        $assets = $this->assetRegisterQuery($visibleOrgIds, $categoryId, $assetId)
-            ->orderBy('ASSET.ass_code')
-            ->get();
+        $assets = $this->attachDepreciationData(
+            $this->assetRegisterQuery($visibleOrgIds, $categoryId, $assetId)->orderBy('ASSET.ass_code')->get(),
+            $request
+        );
+        $generatedAt = now('Asia/Bangkok')->addYears(543)->format('d/m/Y H.i') . ' น.';
+
+        $pdf = Pdf::loadView('asset.ASS-009-print-asset-report.report-register-pdf', [
+            'assets' => $assets,
+            'generatedAt' => $generatedAt,
+        ]);
+
+        return config('app.pdf_test_mode')
+            ? $pdf->stream('asset-register-report.pdf')
+            : $pdf->download('asset-register-report.pdf');
+    }
+
+    public function exportAssetRegister(Request $request)
+    {
+        $categoryId = (int) $request->input('category_id', 0);
+        $assetId = (int) $request->input('asset_id', 0);
+        $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
+        $error = $this->validateAssetBelongsToCategory($assetId, $categoryId, $visibleOrgIds);
+
+        if ($error !== null) {
+            return redirect()->route('asset.reports.index')->withErrors(['report' => $error]);
+        }
+
+        $assets = $this->attachDepreciationData(
+            $this->assetRegisterQuery($visibleOrgIds, $categoryId, $assetId)->orderBy('ASSET.ass_code')->get(),
+            $request
+        );
 
         if ($assets->isEmpty()) {
-            return redirect()
-                ->route('asset.reports.register', $request->only(['category_id', 'asset_id']))
-                ->withErrors(['report' => 'ไม่พบข้อมูลสำหรับสร้างไฟล์รายงาน']);
+            return redirect()->route('asset.reports.index')->withErrors(['report' => 'ไม่พบข้อมูลสำหรับสร้างไฟล์รายงาน']);
         }
 
-        $pdf = $this->buildAssetRegisterPdf($assets);
+        $sheetAssets = $assets->map(fn ($asset) => $this->assetRegisterExportRow($asset))->values()->all();
 
-        // PDF_TEST_MODE: same PDF bytes, served inline so the browser can preview it
-        // in a popup instead of downloading a file on every test run.
-        if (config('app.pdf_test_mode')) {
-            return $pdf->stream('asset-register-report.pdf');
+        if ($this->xlsxTestRequested($request)) {
+            return response()->view('asset.ASS-009-print-asset-report.excel-layout-test', [
+                'assets' => $sheetAssets,
+                'layout' => $this->xlsx->assetRegisterLayoutSpec($sheetAssets),
+            ]);
         }
 
-        return $pdf->download('asset-register-report.pdf');
+        return $this->xlsx->structuredAssetRegister('asset-register-report.xlsx', $sheetAssets);
     }
 
-    /** Build the asset register PDF used by both test mode and the real download. */
-    private function buildAssetRegisterPdf(\Illuminate\Support\Collection $assets)
+    private function xlsxTestRequested(Request $request): bool
     {
-        return Pdf::loadView('asset.ASS-009-print-asset-report.report-register-pdf', [
-            'assets'      => $assets,
-            'generatedAt' => now('Asia/Bangkok')->addYears(543)->format('d/m/Y H.i') . ' น.',
-        ])->setPaper('a4', 'landscape');
+        return in_array(app()->environment(), ['local', 'testing'], true)
+            && $request->boolean('xlsx_test');
     }
 
-    /**
-     * Build the shared Oracle dataset used by both the register preview and PDF download.
-     *
-     * @param  array<int, int>  $visibleOrgIds
-     */
+    private function assetRegisterExportRow(object $asset): array
+    {
+        $description = collect([
+            $asset->ass_desc,
+            $asset->ass_model ? 'รุ่น: ' . $asset->ass_model : null,
+            $asset->ass_serail ? 'Serial No.: ' . $asset->ass_serail : null,
+        ])->filter()->implode("\n");
+
+        return [
+            'government_department' => strtoupper(trim((string) ($asset->org_zone_flg ?? ''))) === 'C'
+                ? 'กรมส่งเสริมสหกรณ์' : ($asset->org_name ?? '-'),
+            'org_name' => $asset->org_name ?? '-',
+            'asscat_name' => $asset->asscat_name ?? '-',
+            'asset_code' => trim((string) ($asset->asscat_code ?? '') . ' ' . (string) ($asset->ass_code ?? '')),
+            'sub_org_name' => $asset->sub_org_name ?? '-',
+            'dealer_name' => $asset->dealer_name ?? '-',
+            'inspect_date_th' => $asset->inspect_date_th ?? '-',
+            'document' => collect([$asset->ass_contact_no, $asset->ass_contact_date_th])->filter()->implode(' / ') ?: '-',
+            'description' => $description !== '' ? $description : '-',
+            'ass_price' => $asset->ass_price !== null ? number_format((float) $asset->ass_price, 2, '.', '') : '0.00',
+            'ass_lifetime' => $asset->ass_lifetime !== null ? (string) (int) $asset->ass_lifetime : '0',
+            'depreciation_rate' => $asset->depreciation_rate !== null ? number_format((float) $asset->depreciation_rate, 2, '.', '') : '0.00',
+            'annual_depreciation' => number_format((float) ($asset->annual_depreciation ?? 0), 2, '.', ''),
+            'remarks' => $asset->remarks ?? '-',
+            'depreciation_periods' => collect($asset->depreciation_periods ?? [])->map(fn ($period) => [
+                'label' => $period['label'] ?? '-',
+                'depreciation' => number_format((float) ($period['depreciation'] ?? 0), 2, '.', ''),
+                'accumulated' => number_format((float) ($period['accumulated'] ?? 0), 2, '.', ''),
+                'net_value' => number_format((float) ($period['net_value'] ?? 0), 2, '.', ''),
+            ])->all(),
+        ];
+    }
+
     private function assetRegisterQuery(array $visibleOrgIds, int $categoryId, int $assetId): \Illuminate\Database\Query\Builder
     {
         $query = DB::connection('oracle')
@@ -265,72 +314,113 @@ class AssetReportController extends Controller
             ->leftJoin('GLB_ORGANIZATION AS ORG', 'ASSET.org_id', '=', 'ORG.org_id')
             ->leftJoin('GLB_ORGANIZATION AS SUB_ORG', 'ASSET.sub_org_id', '=', 'SUB_ORG.org_id')
             ->leftJoin('DEALER', 'ASSET.dealer_id', '=', 'DEALER.id')
-            ->selectRaw("
-                ASSET.id, ASSET.ass_code, ASSET_CATEGORY.asscat_code, ASSET_CATEGORY.asscat_name,
-                ASSET_CATEGORY.asscat_unit, ASSET_CATEGORY.depreciation_rate,
-                ASSET.ass_desc, ASSET.ass_model, ASSET.ass_serail, ASSET.inspect_date,
-                TO_CHAR(ASSET.inspect_date, 'DD/MM/YYYY') AS inspect_date_th,
+            ->selectRaw("ASSET.id, ASSET.ass_code, ASSET.ass_desc, ASSET.ass_model, ASSET.ass_serail,
+                ASSET.inspect_date, TO_CHAR(ASSET.inspect_date, 'DD/MM/YYYY') AS inspect_date_th,
                 ASSET.ass_price, ASSET.ass_lifetime, ASSET.ass_contact_no,
                 TO_CHAR(ASSET.ass_contact_date, 'DD/MM/YYYY') AS ass_contact_date_th,
-                ASSET.ass_trans_remark, ASSET.remarks, ASSET.remain_price, ASSET.ass_status,
+                ASSET.remarks, ASSET.created_at, ASSET_CATEGORY.asscat_code, ASSET_CATEGORY.asscat_name,
+                ASSET_CATEGORY.depreciation_rate, ORG.org_name, ORG.zone_flg AS org_zone_flg,
+                SUB_ORG.org_name AS sub_org_name, DEALER.dealer_name,
                 (SELECT MAX(aa2.status) KEEP (DENSE_RANK LAST ORDER BY aa2.id)
                  FROM ASSET_ASSIGNMENT_LIST aal2
                  JOIN ASSET_ASSIGNMENT aa2 ON aa2.id = aal2.ass_assign_id
-                 WHERE aal2.asset_id = ASSET.id) AS aa_status,
-                ORG.org_name, ORG.zone_flg AS org_zone_flg, SUB_ORG.org_name AS sub_org_name,
-                DEALER.dealer_name
-            ")
+                 WHERE aal2.asset_id = ASSET.id) AS aa_status")
             ->whereIn('ASSET.org_id', $visibleOrgIds);
 
-        if ($categoryId > 0) {
-            $query->where('ASSET.asscat_id', $categoryId);
-        }
+        return $query->when($categoryId > 0, fn ($q) => $q->where('ASSET.asscat_id', $categoryId))
+            ->when($assetId > 0, fn ($q) => $q->where('ASSET.id', $assetId));
+    }
 
-        if ($assetId > 0) {
-            $query->where('ASSET.id', $assetId);
-        }
-
-        return $query;
+    private function attachDepreciationData(\Illuminate\Support\Collection $assets, Request $request): \Illuminate\Support\Collection
+    {
+        return $assets->map(function ($asset) use ($request) {
+            $startDate = $asset->created_at ? \Carbon\Carbon::parse($asset->created_at) : null;
+            $fiscalYear = (int) $request->input('fiscal_year', 0);
+            if ($fiscalYear <= 0 && $startDate !== null) {
+                $fiscalYear = $startDate->month >= 10 ? $startDate->year + 544 : $startDate->year + 543;
+            }
+            $calc = $this->depreciationCalculator->calculate((float) ($asset->ass_price ?? 0), (int) ($asset->ass_lifetime ?? 0), $startDate, $fiscalYear);
+            $asset->annual_depreciation = $calc['annual'];
+            $asset->depreciation_periods = $calc['periods'];
+            return $asset;
+        });
     }
 
     /**
      * Generate asset ledger report (Report Type 2)
      */
-    public function reportAssetLedger(Request $request): View
+    public function reportAssetLedger(Request $request): View|RedirectResponse
     {
-        [$assets, $fiscalYear, $orgId, $subOrgId] = $this->assetLedgerData($request);
+        $data = $this->assetLedgerData($request);
 
         return view('asset.ASS-009-print-asset-report.report-ledger', [
-            'pageTitle'     => 'รายงานทะเบียนครุภัณฑ์',
-            'assets'        => $assets,
-            'fiscalYear'    => $fiscalYear,
-            'reportOrgLine' => $this->ledgerOrgLine($orgId, $subOrgId),
-            'pdfUrl'        => route('asset.reports.ledger.download', $request->only(['fiscal_year', 'org_id', 'sub_org_id'])),
+            'pageTitle'   => 'รายงานทะเบียนครุภัณฑ์',
+            ...$data,
+            'pdfUrl'      => route('asset.reports.ledger.download', $request->only(['fiscal_year', 'org_id', 'sub_org_id'])),
         ]);
     }
 
-    /** Download the fiscal-year ledger report as an A4 landscape PDF. */
     public function downloadAssetLedger(Request $request)
     {
-        [$assets, $fiscalYear, $orgId, $subOrgId] = $this->assetLedgerData($request);
+        $data = $this->assetLedgerData($request);
 
-        $pdf = Pdf::loadView('asset.ASS-009-print-asset-report.report-ledger-pdf', [
-            'assets'        => $assets,
-            'fiscalYear'    => $fiscalYear,
-            'reportOrgLine' => $this->ledgerOrgLine($orgId, $subOrgId),
-        ])->setPaper('a4', 'landscape');
+        $pdf = Pdf::loadView('asset.ASS-009-print-asset-report.report-ledger-pdf', $data)
+            ->setPaper('a4', 'landscape');
 
-        // PDF_TEST_MODE: same PDF bytes, served inline for popup preview instead of downloading.
         return config('app.pdf_test_mode')
             ? $pdf->stream('asset-ledger-report.pdf')
             : $pdf->download('asset-ledger-report.pdf');
     }
 
-    /**
-     * Shared dataset for the ledger preview and its PDF, so both always match.
-     *
-     * @return array{0: \Illuminate\Support\Collection, 1: int, 2: int, 3: int}
-     */
+    public function exportAssetLedger(Request $request)
+    {
+        \Log::info('exportAssetLedger: START');
+        $data = $this->assetLedgerData($request);
+        \Log::info('exportAssetLedger: assetLedgerData returned, assets count: ' . count($data['assets']->getCollection()));
+        $rows = $data['assets']->getCollection()->values()->map(function ($asset, $index) use ($data) {
+            $code = trim((string) ($asset->asscat_code ?? '')) . ' ' . trim((string) ($asset->ass_code ?? ''));
+
+            return [
+                $index + 1,
+                $data['fiscalYear'],
+                $asset->inspect_date_th,
+                $asset->asscat_group,
+                $asset->asscat_name,
+                trim($code),
+                $asset->ass_desc,
+                $asset->ass_model,
+                $asset->ass_serail,
+                1,
+                $asset->asscat_unit,
+                $asset->ass_price,
+                $asset->sub_org_name,
+                $asset->remarks,
+                $asset->status_label,
+            ];
+        })->all();
+
+        \Log::info('exportAssetLedger: mapped rows, count: ' . count($rows));
+
+        if (in_array(app()->environment(), ['local', 'testing'], true) && $request->boolean('xlsx_test')) {
+            \Log::info('exportAssetLedger: TEST MODE requested');
+            return response()->view('asset.ASS-009-print-asset-report.excel-ledger-layout-test', [
+                'headers' => ['ลำดับ', 'ปีงบประมาณ', 'วันที่ตรวจรับ', 'หมวดครุภัณฑ์', 'ประเภทครุภัณฑ์', 'รหัสครุภัณฑ์', 'รายการ/รายละเอียด', 'ยี่ห้อ/รุ่น', 'Serial No.', 'จำนวน', 'หน่วยนับ', 'ราคาที่ได้มาต่อหน่วย', 'กลุ่ม/ฝ่าย', 'หมายเหตุ', 'สถานะ'],
+                'rows' => $rows,
+                'reportOrgLine' => $data['reportOrgLine'],
+                'fiscalYear' => $data['fiscalYear'],
+            ]);
+        }
+
+        \Log::info('exportAssetLedger: calling xlsx->download()');
+        return $this->xlsx->download(
+            'asset-ledger-report.xlsx',
+            ['ลำดับ', 'ปีงบประมาณ', 'วันที่ตรวจรับ', 'หมวดครุภัณฑ์', 'ประเภทครุภัณฑ์', 'รหัสครุภัณฑ์', 'รายการ/รายละเอียด', 'ยี่ห้อ/รุ่น', 'Serial No.', 'จำนวน', 'หน่วยนับ', 'ราคาที่ได้มาต่อหน่วย', 'กลุ่ม/ฝ่าย', 'หมายเหตุ', 'สถานะ'],
+            $rows,
+            'รายงานทะเบียนครุภัณฑ์ ประจำปีงบประมาณ พ.ศ. ' . $data['fiscalYear']
+        );
+    }
+
+    /** @return array{assets: \Illuminate\Pagination\LengthAwarePaginator, fiscalYear: int, orgId: int, subOrgId: int, reportOrgLine: string} */
     private function assetLedgerData(Request $request): array
     {
         $fiscalYear = (int) $request->input('fiscal_year', 0);
@@ -338,108 +428,81 @@ class AssetReportController extends Controller
         $subOrgId = (int) $request->input('sub_org_id', 0);
         $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
 
-        // Thai fiscal year: 1 Oct of the given BE year through 30 Sep of the next.
-        $ceYear = $fiscalYear - 543;
-        $startDate = "{$ceYear}-10-01";
-        $endDate = ($ceYear + 1) . '-09-30';
+        if (($error = $this->validateOrganizationPair($orgId, $subOrgId, $visibleOrgIds)) !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['report' => $error]);
+        }
 
-        $statusCases = collect(AssetController::ASSET_STATUS)
-            ->map(fn (array $meta, string $code) => "WHEN '{$code}' THEN '{$meta['label']}'")
-            ->implode(' ');
+        $ceYear = $fiscalYear - 543;
+
+        $completedDisposals = DB::connection('oracle')
+            ->table('ASSET_SELLING AS s')
+            ->join('ASSET_SELLING_LIST AS sl', 'sl.selling_id', '=', 's.id')
+            ->selectRaw("sl.ass_id, CASE WHEN s.reason = '3' THEN '6' ELSE '4' END AS final_status")
+            ->whereIn('s.reason', ['1', '2'])
+            ->where('s.selling_approval_status', 1)
+            ->groupBy('s.id', 'sl.ass_id', 's.reason', 's.buyer')
+            ->havingRaw("COUNT(*) > 0 AND COUNT(*) = COUNT(sl.selling_real_price) AND TRIM(s.buyer) IS NOT NULL")
+            ->unionAll(
+                DB::connection('oracle')
+                    ->table('ASSET_SELLING AS s')
+                    ->join('ASSET_SELLING_LIST AS sl', 'sl.selling_id', '=', 's.id')
+                    ->selectRaw("sl.ass_id, '6' AS final_status")
+                    ->where('s.reason', '3')
+                    ->where('s.selling_approval_status', 1)
+                    ->groupBy('s.id', 'sl.ass_id', 's.reason')
+                    ->havingRaw('COUNT(*) > 0 AND COUNT(*) = COUNT(sl.selling_real_price)')
+            );
 
         $query = DB::connection('oracle')
             ->table('ASSET')
             ->join('ASSET_CATEGORY', 'ASSET.asscat_id', '=', 'ASSET_CATEGORY.id')
-            ->leftJoin('GLB_ORGANIZATION AS ORG', 'ASSET.org_id', '=', 'ORG.org_id')
+            ->leftJoin('GLB_ORGANIZATION', 'ASSET.org_id', '=', 'GLB_ORGANIZATION.org_id')
             ->leftJoin('GLB_ORGANIZATION AS SUB_ORG', 'ASSET.sub_org_id', '=', 'SUB_ORG.org_id')
-            ->selectRaw("
-                ASSET.id,
-                ASSET.ass_code,
-                ASSET.ass_desc,
-                ASSET.ass_model,
-                ASSET.ass_serail,
-                ASSET.ass_price,
-                ASSET.remarks,
-                ASSET.ass_status,
-                (SELECT MAX(aa2.status) KEEP (DENSE_RANK LAST ORDER BY aa2.id)
-                 FROM ASSET_ASSIGNMENT_LIST aal2
-                 JOIN ASSET_ASSIGNMENT aa2 ON aa2.id = aal2.ass_assign_id
-                 WHERE aal2.asset_id = ASSET.id) AS aa_status,
-                ASSET.inspect_date,
-                TO_CHAR(ASSET.inspect_date, 'DD/MM/') || TO_CHAR(ASSET.inspect_date + INTERVAL '543' YEAR(3), 'YYYY') AS inspect_date_th,
-                ASSET_CATEGORY.asscat_code,
-                ASSET_CATEGORY.asscat_group,
-                ASSET_CATEGORY.asscat_name,
-                ASSET_CATEGORY.asscat_unit,
-                ORG.org_name,
-                SUB_ORG.org_name AS sub_org_name,
-                CASE ASSET.ass_status {$statusCases} ELSE 'อื่น ๆ' END AS status_label
-            ")
+            ->leftJoinSub($completedDisposals, 'completed_disposals', 'completed_disposals.ass_id', '=', 'ASSET.id')
+            ->selectRaw("ASSET.id, ASSET.ass_code, ASSET_CATEGORY.asscat_code, ASSET_CATEGORY.asscat_name,
+                ASSET.ass_desc, ASSET.inspect_date,
+                TO_CHAR(ASSET.inspect_date, 'DD-MM-') || TO_CHAR(ASSET.inspect_date + INTERVAL '543' YEAR(3), 'YYYY') AS inspect_date_th,
+                ASSET.ass_price, ASSET.remain_price, ASSET.ass_status, ASSET.ass_model, ASSET.ass_serail,
+                ASSET_CATEGORY.asscat_group, ASSET_CATEGORY.asscat_unit, ASSET.remarks,
+                GLB_ORGANIZATION.org_name, SUB_ORG.org_name AS sub_org_name,
+                CASE WHEN completed_disposals.final_status IS NOT NULL THEN completed_disposals.final_status ELSE ASSET.ass_status END AS effective_status,
+                CASE WHEN completed_disposals.final_status IS NOT NULL THEN completed_disposals.final_status ELSE ASSET.ass_status END AS status_value,
+                CASE WHEN COALESCE(completed_disposals.final_status, ASSET.ass_status) = '1' THEN 'ใช้งานได้'
+                     WHEN COALESCE(completed_disposals.final_status, ASSET.ass_status) = '2' THEN 'ปกติ'
+                     WHEN COALESCE(completed_disposals.final_status, ASSET.ass_status) = '3' THEN 'พร้อมจำหน่าย'
+                     WHEN COALESCE(completed_disposals.final_status, ASSET.ass_status) = '4' THEN 'จำหน่ายแล้ว'
+                     WHEN COALESCE(completed_disposals.final_status, ASSET.ass_status) = '5' THEN 'ชำรุด'
+                     WHEN COALESCE(completed_disposals.final_status, ASSET.ass_status) = '6' THEN 'สูญหาย'
+                     ELSE 'อื่น ๆ' END AS status_label")
             ->whereIn('ASSET.org_id', $visibleOrgIds)
-            ->whereRaw('ASSET.inspect_date >= ? AND ASSET.inspect_date <= ?', [$startDate, $endDate])
-            ->whereNotIn('ASSET.ass_status', self::LEDGER_EXCLUDED_STATUSES);
+            ->whereRaw('ASSET.inspect_date >= ? AND ASSET.inspect_date <= ?', ["{$ceYear}-10-01", ($ceYear + 1) . '-09-30'])
+            ->whereRaw("COALESCE(completed_disposals.final_status, ASSET.ass_status) = ?", ['2'])
+            // The selected parent is validated against the child hierarchy above;
+            // assets are stored against the selected child organization.
+            ->when($subOrgId > 0, fn ($q) => $q->where('ASSET.org_id', $subOrgId));
 
-        // 0 means "no filter". Selecting a parent unit must also cover the units beneath it,
-        // since assets are attached to the leaf org, not the parent.
-        if ($orgId > 0) {
-            $query->whereIn('ASSET.org_id', $this->orgBranchIds($orgId));
-        }
-
-        if ($subOrgId > 0) {
-            $query->whereIn('ASSET.sub_org_id', $this->orgBranchIds($subOrgId));
-        }
-
-        $assets = $query
-            ->orderBy('ASSET.inspect_date')
-            ->orderBy('ASSET.ass_code')
-            ->get();
-
-        return [$assets, $fiscalYear, $orgId, $subOrgId];
+        return [
+            'assets' => $query->orderBy('ASSET.ass_code')->paginate(self::PER_PAGE),
+            'fiscalYear' => $ceYear,
+            'orgId' => $orgId,
+            'subOrgId' => $subOrgId,
+            'reportOrgLine' => $this->organizationLine($orgId, $subOrgId),
+        ];
     }
 
-    /**
-     * The org itself plus every organization below it in the GLB_ORGANIZATION tree.
-     *
-     * @return list<int>
-     */
-    private function orgBranchIds(int $orgId): array
+    private function organizationLine(int $orgId, int $subOrgId): string
     {
-        $rows = DB::connection('oracle')->select(
-            'SELECT org_id FROM GLB_ORGANIZATION START WITH org_id = ? CONNECT BY PRIOR org_id = org_org_id',
-            [$orgId]
-        );
-
-        return array_map(static fn ($r) => (int) $r->org_id, $rows) ?: [$orgId];
-    }
-
-    /** Build the "[หน่วยงานย่อย] [หน่วยงาน] [ส่วนราชการ]" line shown under the ledger report title. */
-    private function ledgerOrgLine(int $orgId, int $subOrgId): string
-    {
-        $ids = array_values(array_filter([$subOrgId, $orgId]));
-
-        if (empty($ids)) {
+        $ids = array_values(array_filter([$orgId, $subOrgId]));
+        if ($ids === []) {
             return '';
         }
 
-        $orgs = DB::connection('oracle')
+        $names = DB::connection('oracle')
             ->table('GLB_ORGANIZATION')
             ->whereIn('org_id', $ids)
             ->pluck('org_name', 'org_id');
 
-        $zoneFlg = DB::connection('oracle')
-            ->table('GLB_ORGANIZATION')
-            ->where('org_id', $orgId ?: $subOrgId)
-            ->value('zone_flg');
-
-        $parts = collect($ids)
-            ->map(fn (int $id) => $orgs[$id] ?? null)
-            ->filter();
-
-        if (strtoupper(trim((string) $zoneFlg)) === 'C') {
-            $parts->push('กรมส่งเสริมสหกรณ์');
-        }
-
-        return $parts->unique()->implode(' ');
+        return collect($ids)->map(fn (int $id) => $names[$id] ?? null)->filter()->implode(' ');
     }
 
     /**
@@ -470,10 +533,30 @@ class AssetReportController extends Controller
         }
 
         if ((int) $asset->asscat_id !== $categoryId) {
-            return 'ไม่พบครุภัณฑ์ที่ตรงกับประเภทครุภัณฑ์ที่เลือก';
+            return 'รหัสครุภัณฑ์ที่เลือกไม่อยู่ในประเภทครุภัณฑ์ที่เลือก';
         }
 
         return null;
+    }
+
+    /** @param array<int, int> $visibleOrgIds */
+    private function validateOrganizationPair(int $orgId, int $subOrgId, array $visibleOrgIds): ?string
+    {
+        if ($orgId <= 0 || $subOrgId <= 0) {
+            return 'กรุณาเลือกหน่วยงานและหน่วยงานย่อย';
+        }
+
+        if (!in_array($orgId, $visibleOrgIds, true) || !in_array($subOrgId, $visibleOrgIds, true)) {
+            return 'หน่วยงานที่เลือกอยู่นอกขอบเขตสิทธิ์ของผู้ใช้';
+        }
+
+        $isChild = DB::connection('oracle')
+            ->table('GLB_ORGANIZATION')
+            ->where('org_id', $subOrgId)
+            ->where('org_org_id', $orgId)
+            ->exists();
+
+        return $isChild ? null : 'หน่วยงานย่อยไม่อยู่ภายใต้หน่วยงานที่เลือก';
     }
 
     /**

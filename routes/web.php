@@ -15,6 +15,7 @@ use App\Http\Controllers\MaterialRegisterController;
 use App\Http\Controllers\MaterialTransferReceiveController;
 use App\Http\Controllers\MaterialWithdrawApprovalController;
 use App\Http\Controllers\MaterialWithdrawController;
+use App\Http\Controllers\MaterialReportController;
 use App\Http\Controllers\SearchSuggestionsController;
 use Illuminate\Support\Facades\Route;
 
@@ -682,11 +683,11 @@ Route::get('/material/MAT-006-record-balance-setting/{materialCode}/edit', [Mate
 
 
 
-Route::get('/material/MAT-007-print-material-report', function () {
-    return view('material.MAT-007-print-material-report.index', [
-        'pageTitle' => 'จัดพิมพ์รายงานวัสดุ',
-    ]);
-})->name('material.report.index');
+Route::get('/material/MAT-007-print-material-report', [MaterialReportController::class, 'form'])->name('material.report.index');
+Route::get('/material/MAT-007-print-material-report/organizations/search', [MaterialReportController::class, 'searchOrganizations'])->name('material.report.organizations.search');
+Route::get('/material/MAT-007-print-material-report/sub-organizations/search', [MaterialReportController::class, 'searchSubOrganizations'])->name('material.report.sub-organizations.search');
+Route::get('/material/MAT-007-print-material-report/report-stock', [MaterialReportController::class, 'index'])->name('material.report.stock');
+Route::get('/material/MAT-007-print-material-report/report-stock/export', [MaterialReportController::class, 'export'])->name('material.report.stock.export');
 
 
 
@@ -769,8 +770,10 @@ Route::get('/api/asset/search', [AssetReportController::class, 'searchAssets'])-
 Route::get('/api/asset/organizations/search', [AssetReportController::class, 'searchOrganizations'])->name('asset.api.organizations.search');
 Route::get('/api/asset/sub-organizations/search', [AssetReportController::class, 'searchSubOrganizations'])->name('asset.api.sub-organizations.search');
 Route::get('/asset/ASS-009-print-asset-report/report-register', [AssetReportController::class, 'reportAssetRegister'])->name('asset.reports.register');
+Route::get('/asset/ASS-009-print-asset-report/report-register/export', [AssetReportController::class, 'exportAssetRegister'])->name('asset.reports.register.export');
 Route::get('/asset/ASS-009-print-asset-report/report-register/download', [AssetReportController::class, 'downloadAssetRegister'])->name('asset.reports.register.download');
 Route::get('/asset/ASS-009-print-asset-report/report-ledger', [AssetReportController::class, 'reportAssetLedger'])->name('asset.reports.ledger');
+Route::get('/asset/ASS-009-print-asset-report/report-ledger/export', [AssetReportController::class, 'exportAssetLedger'])->name('asset.reports.ledger.export');
 Route::get('/asset/ASS-009-print-asset-report/report-ledger/download', [AssetReportController::class, 'downloadAssetLedger'])->name('asset.reports.ledger.download');
 
 }); // end Route::middleware('auth')
