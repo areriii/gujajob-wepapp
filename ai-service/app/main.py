@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.schemas import ForecastRequest
@@ -20,9 +21,29 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 app = FastAPI(
     title="GUJAJOB AI Forecast Service",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
+
+
+def _error(code: str, message: str, status_code: int) -> JSONResponse:
+    return JSONResponse({"success": False, "code": code, "message": message}, status_code=status_code)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):  # noqa: ARG001
+    locations = [".".join(str(part) for part in err.get("loc", ())) for err in exc.errors()]
+    logger.warning("Invalid forecast request fields: %s", locations[:20])
+
+    if any("forecast_years" in loc for loc in locations):
+        return _error("INVALID_FORECAST_YEARS", "ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี", 422)
+    return _error("INVALID_REQUEST", "ข้อมูลคำขอพยากรณ์ไม่ถูกต้องหรือไม่ครบถ้วน", 422)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):  # noqa: ARG001
+    logger.error("Unhandled error", exc_info=exc)
+    return _error("MODEL_ERROR", "เกิดข้อผิดพลาดในการพยากรณ์", 500)
 
 
 @app.get("/health")
@@ -30,45 +51,22 @@ def health():
     return {"status": "ok"}
 
 
+# Sync handler: model training is CPU-bound, so FastAPI runs it in a worker thread.
 @app.post("/forecast/replacement-budget")
-async def forecast_replacement_budget(payload: ForecastRequest):
-    # Empty candidate list — return zero-budget result without calling the model
-    if not payload.candidate_assets:
-        return JSONResponse(
-            {
-                "success": True,
-                "forecast_years": payload.forecast_years,
-                "total_assets": 0,
-                "total_forecast_budget": 0.0,
-                "years": [],
-                "assets": [],
-                "model": {
-                    "name": "Ridge Regression",
-                    "training_records": len(payload.training_records),
-                    "mae": None,
-                    "mape": None,
-                },
-            }
-        )
-
+def forecast_replacement_budget(payload: ForecastRequest):
     try:
         result = run_forecast(
             forecast_years=payload.forecast_years,
+            base_year=payload.base_year,
             training_records=[r.model_dump() for r in payload.training_records],
             candidate_assets=[a.model_dump() for a in payload.candidate_assets],
         )
-    except Exception as exc:
-        logger.error("Unexpected forecast error: %s", exc, exc_info=True)
-        return JSONResponse(
-            {
-                "success": False,
-                "code": "MODEL_ERROR",
-                "message": "เกิดข้อผิดพลาดในการพยากรณ์",
-            },
-            status_code=500,
-        )
+    except Exception:
+        logger.exception("Unexpected forecast error")
+        return _error("MODEL_ERROR", "เกิดข้อผิดพลาดในการพยากรณ์", 500)
 
     if not result.get("success"):
-        return JSONResponse(result, status_code=422)
+        status_code = 500 if result.get("code") == "MODEL_ERROR" else 422
+        return JSONResponse(result, status_code=status_code)
 
-    return JSONResponse(result)
+    return result

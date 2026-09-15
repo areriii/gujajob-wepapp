@@ -1,0 +1,336 @@
+/* =========================================================
+   ASS-003 — Replacement budget forecast page
+   Reuses the ASS-003 list components from style.css (.registration-card, .card-title,
+   .toolbar/.field-group, .create-btn, .search-btn) and the same --primary blue palette.
+========================================================= */
+
+.forecast-page .page-header {
+    margin-bottom: 20px;
+}
+
+/* .registration-card has overflow:hidden, which would clip the absolutely positioned dropdown lists. */
+.forecast-page .registration-card {
+    overflow: visible;
+}
+
+.forecast-page .registration-card + .registration-card {
+    margin-top: 18px;
+}
+
+/* Stack the filter card (and its open lists) above the result card that follows it. */
+.forecast-page .forecast-filter-card {
+    position: relative;
+    z-index: 20;
+}
+
+.forecast-page .forecast-toolbar {
+    padding: 0 28px 12px;
+    gap: 14px;
+}
+
+.forecast-page .forecast-years-field {
+    flex: 0 0 110px;
+}
+
+.forecast-page .forecast-cat-field {
+    flex: 0 0 260px;
+}
+
+.forecast-page .forecast-org-field {
+    flex: 0 0 280px;
+}
+
+/* style.css pads every .field-group input 0 11px; keep room for the dropdown arrow. */
+.forecast-page .field-group .guja-autocomplete__input {
+    padding-right: 32px;
+}
+
+.forecast-page .create-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.forecast-page .search-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.forecast-rule-note {
+    margin: 0;
+    padding: 0 28px 20px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.forecast-result-body {
+    padding: 0 28px 26px;
+}
+
+.forecast-placeholder-msg {
+    margin: 0;
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* ---- Searchable dropdown list ---- */
+
+.forecast-page .guja-autocomplete__items {
+    right: auto;
+    z-index: 1000;
+    min-width: 100%;
+    width: max-content;
+    max-width: min(460px, calc(100vw - 32px));
+    max-height: 320px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-radius: 6px;
+}
+
+.forecast-page .guja-autocomplete__item {
+    padding: 9px 14px;
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* ---- Results ---- */
+
+.forecast-page .forecast-table-card {
+    max-width: none;
+    overflow: hidden;
+    border: 1px solid #d7e0ea;
+    box-shadow: none;
+}
+
+/* Wider than the standard 1136px ASS-003 container because the result has an 11-column table.
+   Still bounded, so very wide screens keep GUJAJOB's centred card layout beside the sidebar. */
+.forecast-page.page-container {
+    max-width: 1480px;
+}
+
+/* Scrolls only when the card is narrower than the table's minimum width (smaller screens). */
+.forecast-table-scroll {
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #c3cfdf transparent;
+}
+
+.forecast-table-scroll::-webkit-scrollbar {
+    height: 8px;
+}
+
+.forecast-table-scroll::-webkit-scrollbar-thumb {
+    background: #c3cfdf;
+    border-radius: 4px;
+}
+
+/* Text columns get the most room; dates and amounts stay compact. Fixed layout keeps the columns
+   stable while sorting and paging. */
+.forecast-candidate-table {
+    min-width: 1200px;
+}
+
+.forecast-candidate-table th:nth-child(1)  { width: 5.5%; }  /* ลำดับ */
+.forecast-candidate-table th:nth-child(2)  { width: 11%; }   /* รหัสครุภัณฑ์ (codes up to 15 characters stay on one line) */
+.forecast-candidate-table th:nth-child(3)  { width: 12%; }   /* ชื่อครุภัณฑ์ */
+
+.forecast-candidate-table td:nth-child(2) {
+    white-space: nowrap;
+}
+.forecast-candidate-table th:nth-child(4)  { width: 11%; }   /* หมวดครุภัณฑ์ */
+.forecast-candidate-table th:nth-child(5)  { width: 11%; }   /* หน่วยงาน */
+.forecast-candidate-table th:nth-child(6)  { width: 7.5%; }  /* วันที่ตรวจรับ */
+.forecast-candidate-table th:nth-child(7)  { width: 10%; }   /* ปีที่ครบกำหนดทดแทน (longest header label) */
+.forecast-candidate-table th:nth-child(8)  { width: 7.5%; }  /* มูลค่า */
+.forecast-candidate-table th:nth-child(9)  { width: 8%; }    /* ค่าเสื่อมราคาสะสม */
+.forecast-candidate-table th:nth-child(10) { width: 7.5%; }  /* มูลค่าคงเหลือ */
+.forecast-candidate-table th:nth-child(11) { width: 9%; }    /* มูลค่าทดแทน (AI) */
+
+/* Laptop widths (e.g. 1536px): slightly narrower side padding so the table still fits without scrolling. */
+@media (max-width: 1600px) {
+    .forecast-page.page-container {
+        padding-left: 24px;
+        padding-right: 24px;
+    }
+
+    .forecast-page .forecast-result-body {
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+}
+
+/* Amounts never wrap, but the "ไม่สามารถพยากรณ์ได้" message may, so it cannot widen the AI column. */
+.forecast-candidate-table .forecast-cost-unavailable {
+    display: inline-block;
+    white-space: normal;
+}
+
+/* style.css sets 11px for these tables; one step larger and a little more padding for readability. */
+.forecast-page .forecast-table th,
+.forecast-page .forecast-year-table th {
+    padding: 12px 9px;
+    font-size: 12px;
+    line-height: 1.35;
+    vertical-align: middle;
+}
+
+.forecast-page .forecast-table td {
+    padding: 12px 9px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.forecast-page .forecast-year-table-wrap {
+    max-width: 820px;
+}
+
+.forecast-page .forecast-year-table td {
+    font-size: 13px;
+}
+
+.forecast-page .year-ce {
+    font-size: 11px;
+}
+
+.forecast-page .forecast-section-title {
+    padding: 14px 0 8px;
+    font-size: 13px;
+}
+
+.forecast-page .ai-summary-row {
+    grid-template-columns: repeat(3, minmax(180px, 320px));
+}
+
+.forecast-page .ai-summary-item span {
+    font-size: 12px;
+}
+
+.forecast-page .forecast-warning-box {
+    font-size: 12px;
+}
+
+.forecast-page .forecast-model-badge,
+.forecast-page .forecast-basis-note {
+    font-size: 11px;
+}
+
+/* Sorting happens in the browser, so the header uses <button class="sort-link"> instead of the <a> in
+   components/sortable-th.blade.php. Remove the native button look so components/sort-icon.css applies
+   exactly as on the other GUJAJOB lists. */
+.forecast-page button.sort-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: inherit;
+}
+
+/* Long Thai labels wrap onto two lines instead of running into the next column. The icon keeps its own
+   13px slot (sort-icon.css) with a 6px gap, stays vertically centred, and the whole cell width is clickable. */
+.forecast-page th .sort-link {
+    width: 100%;
+    gap: 6px;
+    white-space: normal;
+}
+
+.forecast-page th .sort-label {
+    min-width: 0;
+}
+
+.forecast-page th.forecast-center .sort-link {
+    justify-content: center;
+}
+
+.forecast-page th.forecast-center .sort-label {
+    text-align: center;
+}
+
+.forecast-page th.forecast-num .sort-link {
+    justify-content: flex-end;
+}
+
+.forecast-page th.forecast-num .sort-label {
+    text-align: right;
+}
+
+.forecast-value-notes {
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.7;
+}
+
+.forecast-value-notes p {
+    margin: 0;
+}
+
+.forecast-value-notes strong {
+    color: var(--primary);
+}
+
+/* Long names wrap between words; dates and years (centred) and amounts (.forecast-num) never break. */
+.forecast-candidate-table td {
+    overflow-wrap: break-word;
+}
+
+.forecast-candidate-table td.forecast-center {
+    white-space: nowrap;
+}
+
+/* .forecast-table td sets a dark text colour that outranks .ai-cost-cell on its own. */
+.forecast-candidate-table td.ai-cost-cell {
+    color: var(--primary);
+    font-weight: 900;
+}
+
+.forecast-page .forecast-table-footer {
+    margin-top: 0;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+button.app-pagination-link {
+    font-family: inherit;
+}
+
+/* ---- Back button ----
+   Same class and rules as the ASS-003 show/create/edit pages (create.css .form-actions / .cancel-btn).
+   Deliberately unscoped so components/form-buttons.css, loaded after this file, applies the same
+   system-wide height/padding/font as on those pages. This file is only loaded by the forecast page. */
+
+.form-actions {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #e5ecf5;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.cancel-btn {
+    height: 30px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 0 14px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #ef4444;
+    color: #ef4444;
+    background: #ffffff;
+}
+
+.cancel-btn:hover {
+    background: #fef2f2;
+}
+
+.forecast-page .form-actions {
+    margin-top: 18px;
+}

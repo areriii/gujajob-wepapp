@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
+use Yajra\Oci8\Oci8Connection;
 
 /*
 |--------------------------------------------------------------------------
@@ -43,6 +45,40 @@ expect()->extend('toBeOne', function () {
 | global functions to help you to reduce the number of lines of code in your test files.
 |
 */
+
+/**
+ * Replace the 'oracle' connection with one that compiles real Oracle SQL (yajra OracleGrammar),
+ * records every select and answers with canned rows — it never opens a database session.
+ *
+ * @param  array|\Closure(string, array): array  $rows  rows for every select, or a resolver per query
+ */
+function recordingOracle(array|Closure $rows = []): Oci8Connection
+{
+    $connection = new class(
+        fn () => throw new RuntimeException('Oracle must not be contacted in tests'),
+        '',
+        '',
+        ['username' => 'GUJAJOB'],
+    ) extends Oci8Connection {
+        public array $recorded = [];
+
+        public array|Closure $cannedRows = [];
+
+        public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = [])
+        {
+            $bindings = array_values($bindings);
+            $this->recorded[] = ['sql' => $query, 'bindings' => $bindings];
+
+            return $this->cannedRows instanceof Closure ? ($this->cannedRows)($query, $bindings) : $this->cannedRows;
+        }
+    };
+    $connection->cannedRows = $rows;
+
+    DB::purge('oracle');
+    DB::extend('oracle', fn () => $connection);
+
+    return $connection;
+}
 
 function something()
 {

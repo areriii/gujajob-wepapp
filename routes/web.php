@@ -721,6 +721,7 @@ Route::get('/asset/ASS-003-manage-asset-registration/create', [AssetController::
 Route::get('/asset/ASS-003-manage-asset-registration/forecast-data', [AssetController::class, 'forecastData'])->name('asset.registrations.forecast');
 Route::post('/asset/ASS-003-manage-asset-registration/ai-forecast', [AssetController::class, 'aiForecastBudget'])->name('asset.registrations.ai-forecast');
 Route::get('/asset/ASS-003-manage-asset-registration/forecast-print', [AssetController::class, 'forecastPrint'])->name('asset.registrations.forecast-print');
+Route::get('/asset/ASS-003-manage-asset-registration/replacement-forecast', [AssetController::class, 'forecastPage'])->name('asset.registrations.replacement-forecast');
 Route::post('/asset/ASS-003-manage-asset-registration', [AssetController::class, 'store'])->name('asset.registrations.store');
 Route::get('/asset/ASS-003-manage-asset-registration/{id}', [AssetController::class, 'show'])->name('asset.registrations.show');
 Route::get('/asset/ASS-003-manage-asset-registration/{id}/edit', [AssetController::class, 'edit'])->name('asset.registrations.edit');

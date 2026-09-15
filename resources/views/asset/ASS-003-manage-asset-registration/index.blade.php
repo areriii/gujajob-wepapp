@@ -78,9 +78,9 @@
 
                     <div class="toolbar-spacer"></div>
 
-                    <button class="forecast-open-btn" type="button" id="forecastToggleBtn">
+                    <a class="forecast-open-btn" href="{{ route('asset.registrations.replacement-forecast') }}">
                         พยากรณ์งบประมาณทดแทน
-                    </button>
+                    </a>
 
                     <a class="create-btn link-button" href="{{ route('asset.registrations.create') }}">
                         บันทึกทะเบียนใหม่
@@ -182,53 +182,6 @@
             </div>
         </section>
 
-        {{-- AI Forecast frame — hidden until toggle button is clicked --}}
-        <section class="forecast-card" id="forecastSection" style="display:none;" aria-hidden="true">
-            <div class="forecast-header">
-                <h3>พยากรณ์งบประมาณจัดซื้อครุภัณฑ์ทดแทน</h3>
-                <button class="forecast-close-btn" type="button" id="forecastCloseBtn" aria-label="ปิด">
-                    <svg aria-hidden="true" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-            </div>
-            <div class="forecast-body">
-                <div class="forecast-controls">
-                    <div class="forecast-field">
-                        <label for="forecastYears">พยากรณ์ล่วงหน้า</label>
-                        <select id="forecastYears" style="width:80px;">
-                            <option value="1" selected>1 ปี</option>
-                            <option value="2">2 ปี</option>
-                            <option value="3">3 ปี</option>
-                        </select>
-                    </div>
-                    <div class="forecast-field forecast-cat-field">
-                        <label for="forecastCatId">หมวดครุภัณฑ์</label>
-                        <x-searchable-select
-                            name="forecast_cat_id"
-                            id="forecastCatId"
-                            placeholder="ทั้งหมด"
-                            :options="$forecastCategories"
-                            selected=""
-                        />
-                    </div>
-                    <div class="forecast-field forecast-org-field">
-                        <label for="forecastOrgId">หน่วยงาน</label>
-                        <x-searchable-select
-                            name="forecast_org_id"
-                            id="forecastOrgId"
-                            placeholder="ทั้งหมด"
-                            :options="$forecastOrgs"
-                            selected=""
-                        />
-                    </div>
-                    <button class="calculate-btn" type="button" id="forecastCalcBtn">คำนวณ</button>
-                    <button class="print-forecast-btn" type="button" id="forecastPrintBtn" disabled>จัดพิมพ์รายงาน</button>
-                </div>
-
-                <div id="forecastResult" style="margin-top:16px;" aria-live="polite">
-                    <p style="color:#6d28d9;font-size:12px;font-weight:700;">กดปุ่ม "คำนวณ" เพื่อแสดงผลการพยากรณ์</p>
-                </div>
-            </div>
-        </section>
     </div>
 
     {{-- Delete modal --}}

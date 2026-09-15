@@ -8,8 +8,10 @@ use App\Models\AssetImage;
 use App\Models\Dealer;
 use App\Models\GlbOrganization;
 use App\Services\OrganizationVisibilityService;
+use App\Services\AssetDepreciationCalculator;
 use App\Services\AssetDisplayService;
 use App\Services\ReplacementBudgetForecastService;
+use App\Services\ReplacementForecastDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use Throwable;
 
@@ -142,16 +145,6 @@ class AssetController extends Controller
 
         $assets = $query->paginate(self::PER_PAGE)->withQueryString();
 
-        $userOrgId           = (int) Auth::user()->org_id;
-        $forecastOrgs        = $this->getChildOrgs($userOrgId);
-        $forecastCategories  = AssetCategory::query()->orderBy('asscat_name')
-            ->get(['id', 'asscat_code', 'asscat_name'])
-            ->map(fn ($c) => [
-                'value'      => $c->id,
-                'label'      => $c->asscat_name,
-                'searchText' => $c->asscat_code . ' ' . $c->asscat_name,
-            ])->values()->all();
-
         return view('asset.ASS-003-manage-asset-registration.index', [
             'pageTitle'          => 'จัดการทะเบียนครุภัณฑ์',
             'assets'             => $assets,
@@ -160,8 +153,6 @@ class AssetController extends Controller
             'statusFilter'       => $statusFilter,
             'sort'               => $sort,
             'direction'          => $direction,
-            'forecastCategories' => $forecastCategories,
-            'forecastOrgs'       => $forecastOrgs,
         ]);
     }
 
@@ -310,7 +301,12 @@ class AssetController extends Controller
                     'inspect_date'     => $validated['inspect_date'] ?? null,
                     'warranty'         => isset($validated['warranty']) ? (int) $validated['warranty'] : null,
                     'ass_lifetime'     => isset($validated['ass_lifetime']) ? (int) $validated['ass_lifetime'] : null,
-                    'remain_price'     => isset($validated['ass_price']) ? (float) $validated['ass_price'] : null,
+                    // มูลค่าคงเหลือ as of today from the depreciation rules (equals ass_price until depreciation starts)
+                    'remain_price'     => app(AssetDepreciationCalculator::class)->remainingValue(
+                        $validated['ass_price'] ?? null,
+                        $validated['ass_lifetime'] ?? null,
+                        $validated['inspect_date'] ?? null,
+                    ),
                     'remarks'          => $validated['remarks'] ?? null,
                     'ass_status'       => $validated['ass_status'] ?? '1',
                     'created_by'       => $userId,
@@ -466,6 +462,12 @@ class AssetController extends Controller
                     'inspect_date'     => $validated['inspect_date'] ?? null,
                     'warranty'         => isset($validated['warranty']) ? (int) $validated['warranty'] : null,
                     'ass_lifetime'     => isset($validated['ass_lifetime']) ? (int) $validated['ass_lifetime'] : null,
+                    // Price, inspect date or useful life may have changed: recalculate มูลค่าคงเหลือ as of today.
+                    'remain_price'     => app(AssetDepreciationCalculator::class)->remainingValue(
+                        $validated['ass_price'] ?? null,
+                        $validated['ass_lifetime'] ?? null,
+                        $validated['inspect_date'] ?? null,
+                    ),
                     'remarks'          => $validated['remarks'] ?? null,
                     'ass_status'       => $validated['ass_status'],
                     'updated_by'       => $userId,
@@ -540,88 +542,159 @@ class AssetController extends Controller
     // =========================================================================
 
     /**
-     * POST endpoint: browser → Laravel → Oracle → FastAPI AI → browser
-     * Stores last result in session (per-user) for the print view.
+     * GET: dedicated forecast page, opened from the ASS-003 list.
+     * Calculation still goes through aiForecastBudget(); printing through forecastPrint().
      */
-    public function aiForecastBudget(Request $request): JsonResponse
+    public function forecastPage(): View
     {
-        $validated = $request->validate([
+        return view('asset.ASS-003-manage-asset-registration.forecast', [
+            'pageTitle'          => 'พยากรณ์งบประมาณจัดซื้อครุภัณฑ์ทดแทน',
+            // หมวดครุภัณฑ์ = ASSET_CATEGORY.asscat_group (asscat_name is the asset name, not the category)
+            'forecastCategories' => AssetCategory::groupOptions(),
+            'forecastOrgs'       => $this->getChildOrgs((int) Auth::user()->org_id),
+        ]);
+    }
+
+    /**
+     * POST endpoint: browser → Laravel → Oracle → FastAPI AI → browser
+     *
+     * Replacement timing comes from the asset registry (inspect_date + ass_lifetime);
+     * the AI service only predicts the replacement cost.
+     * Stores the last successful result in session (per-user) for the print view.
+     */
+    public function aiForecastBudget(
+        Request $request,
+        ReplacementForecastDataService $forecastData,
+        ReplacementBudgetForecastService $forecastService,
+    ): JsonResponse {
+        // Validated manually: bootstrap/app.php renders exceptions as JSON only for api/*,
+        // so $request->validate() would answer this fetch() call with a redirect.
+        $validator = Validator::make($request->all(), [
             'forecast_years' => ['required', 'integer', 'min:1', 'max:3'],
-            'filter_cat_id'  => ['nullable', 'integer'],
-            'filter_org_id'  => ['nullable', 'integer'],
+            'filter_cat_group' => ['nullable', 'string', 'max:100'],
+            'filter_org_id'    => ['nullable', 'integer'],
+        ], [
+            'forecast_years.required' => 'กรุณาเลือกระยะเวลาพยากรณ์',
+            'forecast_years.integer'  => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
+            'forecast_years.min'      => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
+            'forecast_years.max'      => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
+            'filter_cat_group.string' => 'หมวดครุภัณฑ์ที่เลือกไม่ถูกต้อง',
+            'filter_cat_group.max'    => 'หมวดครุภัณฑ์ที่เลือกไม่ถูกต้อง',
+            'filter_org_id.integer'   => 'หน่วยงานที่เลือกไม่ถูกต้อง',
         ]);
 
-        $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
-
-        if (empty($visibleOrgIds)) {
-            $empty = $this->emptyForecastResult((int) $validated['forecast_years']);
-            return response()->json($empty);
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'code'    => $validator->errors()->has('forecast_years') ? 'INVALID_FORECAST_YEARS' : 'INVALID_REQUEST',
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors()->toArray(),
+            ], 422);
         }
+
+        $validated = $validator->validated();
 
         $forecastYears = (int) $validated['forecast_years'];
-        $filterCatId   = isset($validated['filter_cat_id']) ? (int) $validated['filter_cat_id'] : null;
+        // หมวดครุภัณฑ์ name (ASSET_CATEGORY.asscat_group); empty = ทั้งหมด
+        $filterCatGroup = trim((string) ($validated['filter_cat_group'] ?? ''));
+        $filterCatGroup = $filterCatGroup === '' ? null : $filterCatGroup;
         $filterOrgId   = isset($validated['filter_org_id']) ? (int) $validated['filter_org_id'] : null;
-        $currentYear   = (int) date('Y');
+        $baseYear      = now()->year;
 
-        // 1. Candidate assets — those due for replacement in the selected period
-        $candidateAssets = $this->queryCandidateAssets(
-            $forecastYears, $filterCatId, $filterOrgId, $visibleOrgIds, $currentYear
-        );
+        // A failed calculation must never leave an older result behind for printing.
+        session()->forget(['ai_forecast_latest', 'ai_forecast_params']);
 
-        // 2. Resolve display labels for print params
-        $categoryName = ($filterCatId !== null)
-            ? (AssetCategory::find($filterCatId)?->asscat_name ?? 'ทั้งหมด')
-            : 'ทั้งหมด';
+        try {
+            $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
 
-        $orgName = ($filterOrgId !== null)
-            ? (DB::connection('oracle')->table('GLB_ORGANIZATION')
-                ->where('org_id', $filterOrgId)->value('org_name') ?? 'ทั้งหมด')
-            : 'ทั้งหมด';
+            if (empty($visibleOrgIds)) {
+                return response()->json($forecastService->emptyResult($forecastYears, $baseYear));
+            }
 
-        $forecastParams = [
-            'forecast_years'  => $forecastYears,
-            'filter_cat_name' => $categoryName,
-            'filter_org_name' => $orgName,
-        ];
+            if ($filterOrgId !== null && !in_array($filterOrgId, $visibleOrgIds, true)) {
+                return $this->forecastError('INVALID_ORGANIZATION', 'หน่วยงานที่เลือกไม่ถูกต้อง หรือไม่มีสิทธิ์เข้าถึง', 422);
+            }
 
-        // 3. No candidates — return zero-budget result without calling AI
-        if (empty($candidateAssets)) {
-            $result = $this->emptyForecastResult($forecastYears);
-            session(['ai_forecast_latest' => $result, 'ai_forecast_params' => $forecastParams]);
-            return response()->json($result);
+            if ($filterCatGroup !== null && !$forecastData->categoryGroupExists($filterCatGroup)) {
+                return $this->forecastError('INVALID_CATEGORY', 'หมวดครุภัณฑ์ที่เลือกไม่ถูกต้อง', 422);
+            }
+            $categoryName = $filterCatGroup ?? 'ทั้งหมด';
+
+            $orgName = $filterOrgId !== null
+                ? ($forecastData->organizationName($filterOrgId) ?? '-')
+                : 'ทั้งหมด';
+
+            // 1. Candidate assets — useful life ends within the forecast period
+            $candidateAssets = $forecastData->candidateAssets(
+                $forecastYears, $baseYear, $filterCatGroup, $filterOrgId, $visibleOrgIds
+            );
+
+            // 2. Historical prices for ML training (not needed when nothing is due)
+            $trainingRecords = empty($candidateAssets) ? [] : $forecastData->trainingRecords($visibleOrgIds);
+        } catch (Throwable $e) {
+            Log::error('ASS-003 forecast: database query failed', ['error' => $e->getMessage()]);
+            return $this->forecastError(
+                'DATABASE_UNAVAILABLE',
+                'ไม่สามารถดึงข้อมูลครุภัณฑ์จากฐานข้อมูลได้ในขณะนี้ กรุณาลองใหม่ภายหลัง',
+                503,
+            );
         }
 
-        // 4. Historical records for ML training
-        $trainingRecords = $this->queryTrainingRecords($visibleOrgIds);
-
-        // 5. Demo data fallback (AI_FORECAST_DEMO=true in .env only for testing)
-        if (config('services.ai_forecast.demo', false) && empty($trainingRecords)) {
+        // 3. Demo training data (AI_FORECAST_DEMO=true, testing only) — the result is labelled as demo
+        $trainingDataSource = 'database';
+        if (!empty($candidateAssets) && empty($trainingRecords) && config('services.ai_forecast.demo', false)) {
             $demoPath = base_path('ai-service/data/demo_training.csv');
-            if (file_exists($demoPath)) {
-                $trainingRecords = $this->loadDemoCsv($demoPath);
+            if (is_file($demoPath)) {
+                $trainingRecords    = $this->loadDemoCsv($demoPath);
+                $trainingDataSource = 'demo';
+                Log::warning('ASS-003 forecast: using DEMO training data because no real price history was found');
             }
         }
 
-        // 6. Call AI service
-        try {
-            $aiResult = app(ReplacementBudgetForecastService::class)->forecast([
+        // 4. Price the candidates with the AI service
+        if (empty($candidateAssets)) {
+            $result = $forecastService->emptyResult($forecastYears, $baseYear);
+        } else {
+            $outcome = $forecastService->forecast([
                 'forecast_years'   => $forecastYears,
+                'base_year'        => $baseYear,
                 'training_records' => $trainingRecords,
                 'candidate_assets' => $candidateAssets,
             ]);
-        } catch (Throwable $e) {
-            Log::error('AI forecast service unreachable', ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'code'    => 'SERVICE_UNAVAILABLE',
-                'message' => 'ไม่สามารถเชื่อมต่อบริการพยากรณ์ได้ กรุณาตรวจสอบ AI Service',
-            ], 503);
+
+            if ($outcome['status'] !== 200) {
+                return response()->json($outcome['body'], $outcome['status']);
+            }
+
+            $result = $this->withDepreciation($outcome['body'], $candidateAssets);
         }
 
-        // 7. Store result in session for print (user-scoped via Laravel session)
-        session(['ai_forecast_latest' => $aiResult, 'ai_forecast_params' => $forecastParams]);
+        $result['depreciation'] = [
+            'method'         => AssetDepreciationCalculator::METHOD,
+            'residual_value' => AssetDepreciationCalculator::RESIDUAL_VALUE,
+            'as_of_date'     => now()->toDateString(),
+        ];
+        $result['training_data_source'] = $trainingDataSource;
+        if ($trainingDataSource === 'demo') {
+            $result['warnings'] = array_merge(
+                ['ผลลัพธ์นี้ใช้ข้อมูลราคาตัวอย่าง (DEMO) ในการฝึกสอนโมเดล ห้ามใช้ประกอบการตั้งงบประมาณจริง'],
+                $result['warnings'] ?? [],
+            );
+        }
 
-        return response()->json($aiResult);
+        // 5. Store result in session for print (user-scoped via Laravel session)
+        $calculatedAt = now();
+        session([
+            'ai_forecast_latest' => $result,
+            'ai_forecast_params' => [
+                'forecast_years'  => $forecastYears,
+                'filter_cat_name' => $categoryName,
+                'filter_org_name' => $orgName,
+                'calculated_at'   => $calculatedAt->format('d/m/') . ($calculatedAt->year + 543) . $calculatedAt->format(' H:i'),
+            ],
+        ]);
+
+        return response()->json($result);
     }
 
     /**
@@ -632,16 +705,14 @@ class AssetController extends Controller
         $result = session('ai_forecast_latest');
         $params = session('ai_forecast_params', []);
 
-        if (!$result) {
+        if (!is_array($result) || ($result['success'] ?? false) !== true) {
             abort(404, 'ไม่พบข้อมูลการพยากรณ์ กรุณาคำนวณก่อนจัดพิมพ์');
         }
-
-        $printDate = date('d/m/') . (date('Y') + 543);
 
         return view('asset.ASS-003-manage-asset-registration.forecast-print', [
             'result'    => $result,
             'params'    => $params,
-            'printDate' => $printDate,
+            'printDate' => now()->format('d/m/') . (now()->year + 543),
         ]);
     }
 
@@ -649,95 +720,46 @@ class AssetController extends Controller
     // Private helpers for AI forecast
     // -------------------------------------------------------------------------
 
-    private function queryCandidateAssets(
-        int $forecastYears,
-        ?int $filterCatId,
-        ?int $filterOrgId,
-        array $visibleOrgIds,
-        int $currentYear,
-    ): array {
-        $endDateExpr = 'ADD_MONTHS(a.inspect_date, a.ass_lifetime * 12)';
-        $endYearExpr = "EXTRACT(YEAR FROM {$endDateExpr})";
-
-        $query = DB::connection('oracle')->table('ASSET AS a')
-            ->join('ASSET_CATEGORY AS c', 'a.asscat_id', '=', 'c.id')
-            ->leftJoin('GLB_ORGANIZATION AS org', 'a.org_id', '=', 'org.org_id')
-            ->whereIn('a.org_id', $visibleOrgIds)
-            ->whereNotNull('a.inspect_date')
-            ->whereNotNull('a.ass_lifetime')
-            ->where('a.ass_lifetime', '>', 0)
-            ->where('a.ass_status', '!=', '3')
-            ->whereRaw("{$endYearExpr} >= ?", [$currentYear + 1])
-            ->whereRaw("{$endYearExpr} <= ?", [$currentYear + $forecastYears])
-            ->select([
-                'a.id',
-                'a.ass_code',
-                'a.ass_desc',
-                'c.id AS category_id',
-                'c.asscat_name AS category_name',
-                'a.org_id AS organization_id',
-                'org.org_name AS organization_name',
-                DB::raw("TO_CHAR(a.inspect_date, 'DD/MM/') || TO_CHAR(a.inspect_date + INTERVAL '543' YEAR(3), 'YYYY') AS acceptance_date"),
-                'a.remain_price AS current_value',
-                DB::raw("EXTRACT(YEAR FROM {$endDateExpr}) AS forecast_year"),
-            ]);
-
-        if ($filterCatId !== null) {
-            $query->where('a.asscat_id', $filterCatId);
-        }
-
-        if ($filterOrgId !== null && in_array($filterOrgId, $visibleOrgIds, true)) {
-            $query->where('a.org_id', $filterOrgId);
-        }
-
-        return $query->get()->map(fn ($r) => [
-            'asset_id'          => (int) $r->id,
-            'asset_code'        => $r->ass_code ?? '-',
-            'asset_name'        => $r->ass_desc,
-            'category_id'       => (int) $r->category_id,
-            'category_name'     => $r->category_name ?? '-',
-            'organization_id'   => (int) $r->organization_id,
-            'organization_name' => $r->organization_name,
-            'acceptance_date'   => $r->acceptance_date,
-            'current_value'     => $r->current_value !== null ? (float) $r->current_value : null,
-            'forecast_year'     => (int) $r->forecast_year,
-        ])->values()->all();
+    private function forecastError(string $code, string $message, int $status): JsonResponse
+    {
+        return response()->json(['success' => false, 'code' => $code, 'message' => $message], $status);
     }
 
-    private function queryTrainingRecords(array $visibleOrgIds): array
-    {
-        return DB::connection('oracle')->table('ASSET AS a')
-            ->join('ASSET_CATEGORY AS c', 'a.asscat_id', '=', 'c.id')
-            ->whereIn('a.org_id', $visibleOrgIds)
-            ->whereNotNull('a.inspect_date')
-            ->whereNotNull('a.ass_price')
-            ->where('a.ass_price', '>', 0)
-            ->select([
-                DB::raw('EXTRACT(YEAR FROM a.inspect_date) AS acquisition_year'),
-                'a.asscat_id AS category_id',
-                'c.asscat_name AS category_name',
-                'a.ass_price AS acquisition_value',
-            ])
-            ->get()
-            ->map(fn ($r) => [
-                'acquisition_year'  => (int) $r->acquisition_year,
-                'category_id'       => (int) $r->category_id,
-                'category_name'     => $r->category_name ?? '-',
-                'acquisition_value' => (float) $r->acquisition_value,
-            ])->values()->all();
-    }
+    /** Asset-register fields the AI service does not use or return; they are attached after pricing. */
+    private const DEPRECIATION_FIELDS = [
+        'inspect_date',
+        'useful_life_years',
+        'end_of_life_date',
+        'annual_depreciation',
+        'accumulated_depreciation',
+        'current_value',
+        'stored_remain_price',
+        'depreciation_method',
+    ];
 
-    private function emptyForecastResult(int $forecastYears): array
+    /**
+     * Attach each candidate's depreciation (AssetDepreciationCalculator, via ReplacementForecastDataService)
+     * to the priced assets. มูลค่าคงเหลือ is accounting data; มูลค่าทดแทน (AI) stays the model output.
+     */
+    private function withDepreciation(array $result, array $candidateAssets): array
     {
-        return [
-            'success'              => true,
-            'forecast_years'       => $forecastYears,
-            'total_assets'         => 0,
-            'total_forecast_budget'=> 0.0,
-            'years'                => [],
-            'assets'               => [],
-            'model'                => ['name' => 'Ridge Regression', 'training_records' => 0, 'mae' => null, 'mape' => null],
-        ];
+        $candidatesById = [];
+        foreach ($candidateAssets as $candidate) {
+            $candidatesById[(int) $candidate['asset_id']] = $candidate;
+        }
+
+        $result['assets'] = array_map(function (array $asset) use ($candidatesById): array {
+            $candidate = $candidatesById[(int) ($asset['asset_id'] ?? 0)] ?? [];
+            foreach (self::DEPRECIATION_FIELDS as $field) {
+                if (array_key_exists($field, $candidate)) {
+                    $asset[$field] = $candidate[$field];
+                }
+            }
+
+            return $asset;
+        }, $result['assets'] ?? []);
+
+        return $result;
     }
 
     private function loadDemoCsv(string $path): array

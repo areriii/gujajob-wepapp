@@ -351,26 +351,20 @@ class SearchSuggestionsController extends Controller
     }
 
     // ──────────────────────────────────────────────────────────
-    //  Forecast: Category filter (returns id + name)
+    //  Forecast: Category filter (หมวดครุภัณฑ์ = ASSET_CATEGORY.asscat_group)
     // ──────────────────────────────────────────────────────────
 
     private function searchForecastCategory(string $keyword, int $limit): JsonResponse
     {
-        $escaped = $this->escapeLike($keyword);
-
-        $data = AssetCategory::query()
-            ->where(function ($q) use ($escaped): void {
-                $q->whereRaw('UPPER(asscat_name) LIKE UPPER(?)', ['%' . $escaped . '%'])
-                  ->orWhereRaw('UPPER(asscat_code) LIKE UPPER(?)', ['%' . $escaped . '%']);
-            })
-            ->orderBy('asscat_name')
-            ->limit($limit)
-            ->get(['id', 'asscat_code', 'asscat_name'])
-            ->map(fn ($c) => [
-                'id'   => $c->id,
-                'code' => $c->asscat_name,
-                'name' => $c->asscat_code,
-            ]);
+        $data = collect(AssetCategory::groupNames())
+            ->filter(fn (string $group) => $keyword === '' || mb_stripos($group, $keyword) !== false)
+            ->take($limit)
+            ->map(fn (string $group) => [
+                'id'   => $group,
+                'code' => $group,
+                'name' => '',
+            ])
+            ->values();
 
         return response()->json(['data' => $data]);
     }
