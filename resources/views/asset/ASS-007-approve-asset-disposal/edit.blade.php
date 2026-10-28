@@ -121,8 +121,8 @@
 
         <div class="confirm-overlay" id="approvalConfirmOverlay" aria-hidden="true">
             <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="approvalConfirmTitle">
-                <div class="confirm-icon success-confirm-icon" id="approvalConfirmIcon">
-                    <svg><use id="approvalConfirmIconUse" href="#icon-square-pen"></use></svg>
+                <div class="confirm-icon success-confirm-icon save-confirm-icon" id="approvalConfirmIcon">
+                    <svg><use id="approvalConfirmIconUse" href="#icon-success"></use></svg>
                 </div>
                 <h3 id="approvalConfirmTitle">ยืนยันการบันทึก</h3>
                 <p id="approvalConfirmMessage">คุณแน่ใจหรือไม่ว่าต้องการบันทึกผลการอนุมัตินี้</p>

@@ -1,4 +1,5 @@
 import { SearchAutocomplete } from '../../components/search-autocomplete.js';
+import { initSearchableSelects } from '../../components/searchable-select.js';
 
 const sidebarStorageKey = 'gujajob.sidebar.groupState';
 
@@ -308,42 +309,69 @@ function initializeBulkUpdate() {
 
 /* ===== Print ===== */
 
+// "จัดพิมพ์รายงาน" downloads the server-made PDF, as the print button of the MAT-007 report does.
 function initializePrint() {
     const printBtn = document.getElementById('printBalanceButton');
     if (!printBtn) return;
 
-    printBtn.addEventListener('click', () => {
-        const fiscalYear = printBtn.dataset.fiscalYear ?? '';
-        const orgName    = printBtn.dataset.orgName ?? 'ทุกหน่วยงาน';
+    let isGeneratingPdf = false;
 
-        // Build print-friendly content
-        const tableEl = document.querySelector('.balance-table');
-        if (!tableEl) return;
-
-        const win = window.open('', '_blank');
-        win.document.write(`<!DOCTYPE html><html lang="th"><head>
-            <meta charset="UTF-8">
-            <title>รายการตั้งยอดคงเหลือ</title>
-            <style>
-                body{font-family:Sarabun,sans-serif;font-size:13px;margin:20px;}
-                h2{font-size:16px;margin:0 0 6px;}
-                .meta{font-size:12px;color:#555;margin-bottom:12px;}
-                table{border-collapse:collapse;width:100%;}
-                th,td{border:1px solid #ccc;padding:5px 8px;text-align:left;}
-                th{background:#f3f4f6;}
-                input{border:none;background:transparent;width:100%;}
-            </style>
-        </head><body>
-            <h2>รายการตั้งยอดคงเหลือ</h2>
-            <div class="meta">
-                หน่วยงาน: ${orgName}<br>
-                ปีงบประมาณ: ${fiscalYear}
+    const openPdfPreview = (objectUrl) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.65)';
+        overlay.innerHTML = `
+            <div style="position:relative;width:min(960px,100%);height:min(90vh,760px);background:#fff">
+                <button type="button" style="position:absolute;right:8px;top:8px;z-index:1;padding:5px 10px;border:0;background:#111827;color:#fff;cursor:pointer">ปิด</button>
+                <iframe style="width:100%;height:100%;border:0" src="${objectUrl}" title="PDF preview"></iframe>
             </div>
-            ${tableEl.outerHTML}
-        </body></html>`);
-        win.document.close();
-        win.focus();
-        setTimeout(() => win.print(), 400);
+        `;
+
+        const close = () => {
+            overlay.remove();
+            URL.revokeObjectURL(objectUrl);
+        };
+
+        overlay.querySelector('button').addEventListener('click', close);
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) close();
+        });
+        document.body.appendChild(overlay);
+    };
+
+    printBtn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        if (isGeneratingPdf) return;
+
+        const pdfUrl = printBtn.dataset.pdfUrl;
+        if (!pdfUrl) return;
+
+        isGeneratingPdf = true;
+        printBtn.disabled = true;
+        try {
+            const response = await fetch(pdfUrl);
+            if (!response.ok) throw new Error(`PDF request failed with status ${response.status}`);
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const isTestPreview = new URL(pdfUrl, window.location.href).searchParams.get('pdf_test') === '1'
+                || (response.headers.get('content-disposition') || '').includes('inline');
+
+            if (isTestPreview) {
+                openPdfPreview(objectUrl);
+            } else {
+                const link = document.createElement('a');
+                link.href = objectUrl;
+                link.download = printBtn.dataset.pdfFilename || 'material-balance-setting.pdf';
+                link.click();
+                URL.revokeObjectURL(objectUrl);
+            }
+        } catch (error) {
+            console.error('Failed to generate the balance setting PDF:', error);
+            alert('ไม่สามารถสร้างไฟล์รายงานได้ กรุณาลองใหม่อีกครั้ง');
+        } finally {
+            isGeneratingPdf = false;
+            printBtn.disabled = false;
+        }
     });
 }
 
@@ -359,6 +387,7 @@ document.addEventListener('keydown', (event) => {
 
 initializeSidebarGroups();
 preventDisabledMenuReload();
+initSearchableSelects();
 initializeBalanceSearch();
 initializeBalanceInlineEdit();
 initializeBulkUpdate();

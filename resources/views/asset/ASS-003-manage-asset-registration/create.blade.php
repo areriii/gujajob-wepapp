@@ -91,6 +91,15 @@
                         <label for="depreciationRate">อัตราค่าเสื่อม</label>
                         <input id="depreciationRate" type="text" readonly placeholder="-">
                     </div>
+                    <div class="form-field">
+                        <label for="replacementStatus">สถานะการซื้อทดแทน</label>
+                        <select id="replacementStatus" name="replacement_status">
+                            @foreach (\App\Http\Controllers\AssetController::REPLACEMENT_STATUS as $val => $label)
+                                <option value="{{ $val }}" @selected(old('replacement_status', 'no') === $val)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('replacement_status')<span class="field-error" style="color:#dc2626;font-size:11px;">{{ $message }}</span>@enderror
+                    </div>
                 </div>
 
                 <div class="form-row one-col">
@@ -224,8 +233,8 @@
     {{-- Green+Check save confirmation popup --}}
     <div class="confirm-overlay" id="saveAssetRegistrationOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true">
-            <div class="confirm-icon success-confirm-icon">
-                <svg><use href="#icon-check"></use></svg>
+            <div class="confirm-icon success-confirm-icon save-confirm-icon">
+                <svg><use href="#icon-success"></use></svg>
             </div>
             <h3>ยืนยันการบันทึกข้อมูล</h3>
             <p>คุณแน่ใจหรือไม่ว่าต้องการบันทึกทะเบียนครุภัณฑ์นี้</p>

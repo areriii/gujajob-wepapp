@@ -4,6 +4,7 @@
     @vite([
         'resources/css/components/pagination.css',
         'resources/css/components/search-autocomplete.css',
+        'resources/css/components/searchable-select.css',
         'resources/css/components/sort-icon.css',
         'resources/css/components/table-actions.css',
         'resources/css/material/MAT-006-record-balance-setting/style.css',
@@ -20,14 +21,14 @@
                     <div class="filter-row">
                         <div class="field-group">
                             <label for="orgId">หน่วยงาน</label>
-                            <select id="orgId" name="org_id">
-                                <option value="0">-- ทุกหน่วยงาน --</option>
-                                @foreach ($organizations as $org)
-                                    <option value="{{ $org->org_id }}" @selected($orgId == $org->org_id)>
-                                        {{ $org->org_name }}
-                                    </option>
-                                @endforeach
-                            </select>
+                            {{-- '__all__' is not numeric, so the controller reads it as every organization --}}
+                            <x-searchable-select
+                                name="org_id"
+                                id="orgId"
+                                placeholder="ทุกหน่วยงาน"
+                                :options="collect([['value' => '__all__', 'label' => 'ทุกหน่วยงาน']])->merge($organizations->map(fn ($org) => ['value' => $org->org_id, 'label' => $org->org_name]))"
+                                :selected="$orgId ?? '__all__'"
+                            />
                         </div>
 
                         <div class="field-group">
@@ -86,7 +87,7 @@
                     <svg class="card-title-icon"><use href="#icon-material-list"></use></svg>
                     <span>รายการ ({{ $materials->total() }} รายการ)
                         — ปีงบประมาณ {{ $fiscalYear }}
-                        @if ($orgId > 0)
+                        @if ($orgId !== null)
                             @php $selOrg = $organizations->firstWhere('org_id', $orgId); @endphp
                             — {{ $selOrg?->org_name ?? '' }}
                         @endif
@@ -97,14 +98,17 @@
                         class="print-btn"
                         type="button"
                         id="printBalanceButton"
-                        data-fiscal-year="{{ $fiscalYear }}"
-                        data-org-id="{{ $orgId }}"
-                        data-org-name="{{ $orgId > 0 && isset($selOrg) ? $selOrg->org_name : 'ทุกหน่วยงาน' }}"
+                        {{-- Same filters as the list on screen, every page of it --}}
+                        data-pdf-url="{{ route('material.balance.download', array_merge(
+                            ['search_by' => $searchBy, 'keyword' => $keyword, 'org_id' => $orgId, 'fiscal_year' => $fiscalYear, 'sort' => $sort, 'direction' => $direction],
+                            request()->boolean('pdf_test') ? ['pdf_test' => 1] : []
+                        )) }}"
+                        data-pdf-filename="material-balance-setting-{{ $fiscalYear }}.pdf"
                     >
                         <svg class="print-btn-icon"><use href="#icon-printer"></use></svg>
                         จัดพิมพ์รายงาน
                     </button>
-                    @if ($isEditable)
+                    @if ($canAdjust)
                         <button
                             class="adjust-btn"
                             type="button"
@@ -130,7 +134,13 @@
                             <th>หน่วย</th>
                             <x-sortable-th label="ราคาเฉลี่ย/หน่วย" key="avg_price" :currentSort="$sort" :currentDirection="$direction" :extraParams="['search_by'=>$searchBy,'keyword'=>$keyword,'org_id'=>$orgId,'fiscal_year'=>$fiscalYear]" />
                             <x-sortable-th label="ยอดคงเหลือ"          key="balance"     :currentSort="$sort" :currentDirection="$direction" :extraParams="['search_by'=>$searchBy,'keyword'=>$keyword,'org_id'=>$orgId,'fiscal_year'=>$fiscalYear]" />
-                            @if ($isEditable)
+                            <th class="recommended-column" title="{{ $recommendationNote }}">
+                                จำนวนเฉลี่ยในการเบิกต่อเดือน
+                                @if ($recommendationMethod === \App\Services\MaterialStockRecommendationService::METHOD_AI)
+                                    <span class="recommended-method">AI</span>
+                                @endif
+                            </th>
+                            @if ($canAdjust)
                                 <th class="action-column">จัดการ</th>
                             @endif
                         </tr>
@@ -159,10 +169,12 @@
                                         data-original-value="{{ (int) ($invAmt ?? 0) }}"
                                         min="0"
                                         step="1"
-                                        {{ ! $isEditable ? 'disabled' : '' }}
+                                        {{-- Read-only until the pen icon is clicked; the tick locks it again --}}
+                                        disabled
                                     >
                                 </td>
-                                @if ($isEditable)
+                                <td class="recommended-column recommended-balance">{{ isset($recommended[(int) $mat->id]) ? number_format($recommended[(int) $mat->id]) : '-' }}</td>
+                                @if ($canAdjust)
                                     <td class="action-column">
                                         <button
                                             class="table-action-icon table-action-edit"
@@ -181,7 +193,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td class="no-data" colspan="{{ $isEditable ? 7 : 6 }}">ไม่พบข้อมูลวัสดุ</td>
+                                <td class="no-data" colspan="{{ $canAdjust ? 8 : 7 }}">ไม่พบข้อมูลวัสดุ</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -205,7 +217,7 @@
     {{-- Bulk Update Confirm Modal --}}
     <div class="confirm-overlay" id="bulkUpdateOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true">
-            <div class="confirm-icon success-confirm-icon">
+            <div class="confirm-icon success-confirm-icon save-confirm-icon">
                 <svg><use href="#icon-success"></use></svg>
             </div>
             <h3>ยืนยันการปรับปรุงยอดคงเหลือ</h3>

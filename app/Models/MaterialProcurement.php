@@ -60,11 +60,6 @@ class MaterialProcurement extends Model
         return $this->hasMany(MaterialProcurementList::class, 'mat_pro_id', 'id');
     }
 
-    public function procurementMethod(): BelongsTo
-    {
-        return $this->belongsTo(MaterialProcurementMethod::class, 'mat_pro_method', 'method_id');
-    }
-
     public function getStatusLabelAttribute(): string
     {
         return ($this->updated_at ?? $this->created_at) ? 'บันทึกแล้ว' : 'ร่าง';

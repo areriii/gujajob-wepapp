@@ -10,8 +10,10 @@ use App\Models\GlbOrganization;
 use App\Services\OrganizationVisibilityService;
 use App\Services\AssetDepreciationCalculator;
 use App\Services\AssetDisplayService;
-use App\Services\ReplacementBudgetForecastService;
+use App\Services\ReplacementBudgetCalculator;
 use App\Services\ReplacementForecastDataService;
+use App\Services\XlsxReportService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -42,6 +44,12 @@ class AssetController extends Controller
         '4' => ['label' => 'จำหน่ายแล้ว',     'class' => 'status-sold'],
         '5' => ['label' => 'ชำรุด',         'class' => 'status-damaged'],
         '6' => ['label' => 'สูญหาย',        'class' => 'status-lost'],
+    ];
+
+    /** ASSET.REPLACEMENT_STATUS: 'yes' keeps the asset out of the replacement forecast. */
+    public const REPLACEMENT_STATUS = [
+        'no'  => 'ยังไม่ได้ซื้อทดแทน',
+        'yes' => 'ซื้อทดแทนแล้ว',
     ];
 
     public static function assetStatusLabel(string $status): array
@@ -259,6 +267,7 @@ class AssetController extends Controller
             'ass_lifetime'     => ['nullable', 'integer', 'min:0'],
             'remarks'          => ['nullable', 'string', 'max:500'],
             'ass_status'       => ['nullable', 'string', 'in:1,2,3,4,5,6'],
+            'replacement_status' => ['nullable', 'string', 'in:no,yes'],
             'asset_images'     => ['nullable', 'array', 'max:3'],
             'asset_images.*'   => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif', 'max:1024'],
         ], [
@@ -267,6 +276,7 @@ class AssetController extends Controller
             'asscat_id.required' => 'กรุณาเลือกประเภทครุภัณฑ์',
             'asscat_id.exists'   => 'ประเภทครุภัณฑ์ที่เลือกไม่ถูกต้อง',
             'ass_status.in'      => 'สถานะที่เลือกไม่ถูกต้อง',
+            'replacement_status.in' => 'สถานะการซื้อทดแทนที่เลือกไม่ถูกต้อง',
             'asset_images.*.max' => 'ไฟล์รูปภาพต้องมีขนาดไม่เกิน 1 MB ต่อไฟล์',
         ]);
 
@@ -309,6 +319,7 @@ class AssetController extends Controller
                     ),
                     'remarks'          => $validated['remarks'] ?? null,
                     'ass_status'       => $validated['ass_status'] ?? '1',
+                    'replacement_status' => $validated['replacement_status'] ?? 'no',
                     'created_by'       => $userId,
                     'updated_by'       => $userId,
                 ]);
@@ -420,6 +431,7 @@ class AssetController extends Controller
             'ass_lifetime'       => ['nullable', 'integer', 'min:0'],
             'remarks'            => ['nullable', 'string', 'max:500'],
             'ass_status'       => ['required', 'string', 'in:1,2,3,4,5,6'],
+            'replacement_status' => ['required', 'string', 'in:no,yes'],
             'asset_images'     => ['nullable', 'array', 'max:3'],
             'asset_images.*'   => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif', 'max:1024'],
             'remove_image_ids'   => ['nullable', 'array'],
@@ -431,6 +443,8 @@ class AssetController extends Controller
             'asscat_id.exists'   => 'ประเภทครุภัณฑ์ที่เลือกไม่ถูกต้อง',
             'ass_status.required' => 'กรุณาเลือกสถานะ',
             'ass_status.in'       => 'สถานะที่เลือกไม่ถูกต้อง',
+            'replacement_status.required' => 'กรุณาเลือกสถานะการซื้อทดแทน',
+            'replacement_status.in'       => 'สถานะการซื้อทดแทนที่เลือกไม่ถูกต้อง',
             'asset_images.*.max' => 'ไฟล์รูปภาพต้องมีขนาดไม่เกิน 1 MB ต่อไฟล์',
         ]);
 
@@ -470,6 +484,7 @@ class AssetController extends Controller
                     ),
                     'remarks'          => $validated['remarks'] ?? null,
                     'ass_status'       => $validated['ass_status'],
+                    'replacement_status' => $validated['replacement_status'],
                     'updated_by'       => $userId,
                 ]);
 
@@ -538,78 +553,101 @@ class AssetController extends Controller
     }
 
     // =========================================================================
-    // AI Budget Forecast (ASS-003)
+    // Replacement Budget Forecast (ASS-003)
     // =========================================================================
 
     /**
      * GET: dedicated forecast page, opened from the ASS-003 list.
-     * Calculation still goes through aiForecastBudget(); printing through forecastPrint().
+     * Calculation goes through calculateForecastBudget(); the asset list through forecastAssets() and
+     * printing through forecastPrint().
      */
-    public function forecastPage(): View
+    public function forecastPage(Request $request): View
     {
+        // ?restore=1 (ย้อนกลับ on the asset list, or the browser's back button: forecast.js puts it in the
+        // address after each calculation) shows the last calculation again, with the conditions it used.
+        $latest = session('replacement_forecast_latest');
+        $restored = $request->boolean('restore') && is_array($latest) && ($latest['success'] ?? false) === true;
+        $params = $restored ? session('replacement_forecast_params', []) : [];
+        $percent = (float) ($params['increase_percent'] ?? ReplacementBudgetCalculator::DEFAULT_PERCENT);
+
         return view('asset.ASS-003-manage-asset-registration.forecast', [
             'pageTitle'          => 'พยากรณ์งบประมาณจัดซื้อครุภัณฑ์ทดแทน',
             // หมวดครุภัณฑ์ = ASSET_CATEGORY.asscat_group (asscat_name is the asset name, not the category)
             'forecastCategories' => AssetCategory::groupOptions(),
             'forecastOrgs'       => $this->getChildOrgs((int) Auth::user()->org_id),
+            'restoredForecast'   => $restored ? $latest : null,
+            'forecastInputs'     => [
+                'years'     => (int) ($params['forecast_years'] ?? 1),
+                'cat_group' => (string) ($params['filter_cat_group'] ?? ''),
+                'org_id'    => (string) ($params['filter_org_id'] ?? ''),
+                'percent'   => rtrim(rtrim(number_format($percent, 2, '.', ''), '0'), '.'),
+            ],
         ]);
     }
 
     /**
-     * POST endpoint: browser → Laravel → Oracle → FastAPI AI → browser
+     * POST endpoint: replacement budget for the assets due in the forecast period.
      *
-     * Replacement timing comes from the asset registry (inspect_date + ass_lifetime);
-     * the AI service only predicts the replacement cost.
-     * Stores the last successful result in session (per-user) for the print view.
+     * Which assets are due, and when, comes from the asset registry (inspect_date + ass_lifetime); each is
+     * budgeted at its purchase value plus the percentage entered on the page (ReplacementBudgetCalculator).
+     * Stores the last successful result in session (per-user) for the asset list and the print view.
      */
-    public function aiForecastBudget(
+    public function calculateForecastBudget(
         Request $request,
         ReplacementForecastDataService $forecastData,
-        ReplacementBudgetForecastService $forecastService,
+        ReplacementBudgetCalculator $calculator,
     ): JsonResponse {
         // Validated manually: bootstrap/app.php renders exceptions as JSON only for api/*,
         // so $request->validate() would answer this fetch() call with a redirect.
         $validator = Validator::make($request->all(), [
-            'forecast_years' => ['required', 'integer', 'min:1', 'max:3'],
+            'forecast_years'   => ['required', 'integer', 'min:1', 'max:3'],
+            'increase_percent' => ['required', 'numeric', 'min:0', 'max:1000'],
             'filter_cat_group' => ['nullable', 'string', 'max:100'],
             'filter_org_id'    => ['nullable', 'integer'],
         ], [
-            'forecast_years.required' => 'กรุณาเลือกระยะเวลาพยากรณ์',
-            'forecast_years.integer'  => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
-            'forecast_years.min'      => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
-            'forecast_years.max'      => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
-            'filter_cat_group.string' => 'หมวดครุภัณฑ์ที่เลือกไม่ถูกต้อง',
-            'filter_cat_group.max'    => 'หมวดครุภัณฑ์ที่เลือกไม่ถูกต้อง',
-            'filter_org_id.integer'   => 'หน่วยงานที่เลือกไม่ถูกต้อง',
+            'forecast_years.required'   => 'กรุณาเลือกระยะเวลาพยากรณ์',
+            'forecast_years.integer'    => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
+            'forecast_years.min'        => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
+            'forecast_years.max'        => 'ระยะเวลาพยากรณ์ต้องเป็น 1, 2 หรือ 3 ปี',
+            'increase_percent.required' => 'กรุณากรอก % ที่เพิ่มจากมูลค่าตอนซื้อ',
+            'increase_percent.numeric'  => '% ที่เพิ่มจากมูลค่าตอนซื้อต้องเป็นตัวเลข 0–1000',
+            'increase_percent.min'      => '% ที่เพิ่มจากมูลค่าตอนซื้อต้องเป็นตัวเลข 0–1000',
+            'increase_percent.max'      => '% ที่เพิ่มจากมูลค่าตอนซื้อต้องเป็นตัวเลข 0–1000',
+            'filter_cat_group.string'   => 'หมวดครุภัณฑ์ที่เลือกไม่ถูกต้อง',
+            'filter_cat_group.max'      => 'หมวดครุภัณฑ์ที่เลือกไม่ถูกต้อง',
+            'filter_org_id.integer'     => 'หน่วยงานที่เลือกไม่ถูกต้อง',
         ]);
 
         if ($validator->fails()) {
+            $errors = $validator->errors();
+
             return response()->json([
                 'success' => false,
-                'code'    => $validator->errors()->has('forecast_years') ? 'INVALID_FORECAST_YEARS' : 'INVALID_REQUEST',
-                'message' => $validator->errors()->first(),
-                'errors'  => $validator->errors()->toArray(),
+                'code'    => match (true) {
+                    $errors->has('forecast_years')   => 'INVALID_FORECAST_YEARS',
+                    $errors->has('increase_percent') => 'INVALID_PERCENT',
+                    default                            => 'INVALID_REQUEST',
+                },
+                'message' => $errors->first(),
+                'errors'  => $errors->toArray(),
             ], 422);
         }
 
         $validated = $validator->validated();
 
-        $forecastYears = (int) $validated['forecast_years'];
+        $forecastYears   = (int) $validated['forecast_years'];
+        $increasePercent = round((float) $validated['increase_percent'], 2);
         // หมวดครุภัณฑ์ name (ASSET_CATEGORY.asscat_group); empty = ทั้งหมด
         $filterCatGroup = trim((string) ($validated['filter_cat_group'] ?? ''));
         $filterCatGroup = $filterCatGroup === '' ? null : $filterCatGroup;
         $filterOrgId   = isset($validated['filter_org_id']) ? (int) $validated['filter_org_id'] : null;
         $baseYear      = now()->year;
 
-        // A failed calculation must never leave an older result behind for printing.
-        session()->forget(['ai_forecast_latest', 'ai_forecast_params']);
+        // A failed calculation must never leave an older result behind for the asset list or printing.
+        session()->forget(['replacement_forecast_latest', 'replacement_forecast_params']);
 
         try {
             $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
-
-            if (empty($visibleOrgIds)) {
-                return response()->json($forecastService->emptyResult($forecastYears, $baseYear));
-            }
 
             if ($filterOrgId !== null && !in_array($filterOrgId, $visibleOrgIds, true)) {
                 return $this->forecastError('INVALID_ORGANIZATION', 'หน่วยงานที่เลือกไม่ถูกต้อง หรือไม่มีสิทธิ์เข้าถึง', 422);
@@ -624,13 +662,10 @@ class AssetController extends Controller
                 ? ($forecastData->organizationName($filterOrgId) ?? '-')
                 : 'ทั้งหมด';
 
-            // 1. Candidate assets — useful life ends within the forecast period
-            $candidateAssets = $forecastData->candidateAssets(
+            // Assets whose useful life ends within the forecast period, with their depreciation
+            $candidateAssets = empty($visibleOrgIds) ? [] : $forecastData->candidateAssets(
                 $forecastYears, $baseYear, $filterCatGroup, $filterOrgId, $visibleOrgIds
             );
-
-            // 2. Historical prices for ML training (not needed when nothing is due)
-            $trainingRecords = empty($candidateAssets) ? [] : $forecastData->trainingRecords($visibleOrgIds);
         } catch (Throwable $e) {
             Log::error('ASS-003 forecast: database query failed', ['error' => $e->getMessage()]);
             return $this->forecastError(
@@ -640,57 +675,25 @@ class AssetController extends Controller
             );
         }
 
-        // 3. Demo training data (AI_FORECAST_DEMO=true, testing only) — the result is labelled as demo
-        $trainingDataSource = 'database';
-        if (!empty($candidateAssets) && empty($trainingRecords) && config('services.ai_forecast.demo', false)) {
-            $demoPath = base_path('ai-service/data/demo_training.csv');
-            if (is_file($demoPath)) {
-                $trainingRecords    = $this->loadDemoCsv($demoPath);
-                $trainingDataSource = 'demo';
-                Log::warning('ASS-003 forecast: using DEMO training data because no real price history was found');
-            }
-        }
-
-        // 4. Price the candidates with the AI service
-        if (empty($candidateAssets)) {
-            $result = $forecastService->emptyResult($forecastYears, $baseYear);
-        } else {
-            $outcome = $forecastService->forecast([
-                'forecast_years'   => $forecastYears,
-                'base_year'        => $baseYear,
-                'training_records' => $trainingRecords,
-                'candidate_assets' => $candidateAssets,
-            ]);
-
-            if ($outcome['status'] !== 200) {
-                return response()->json($outcome['body'], $outcome['status']);
-            }
-
-            $result = $this->withDepreciation($outcome['body'], $candidateAssets);
-        }
-
+        $result = $calculator->calculate($forecastYears, $baseYear, $increasePercent, $candidateAssets);
         $result['depreciation'] = [
             'method'         => AssetDepreciationCalculator::METHOD,
             'residual_value' => AssetDepreciationCalculator::RESIDUAL_VALUE,
             'as_of_date'     => now()->toDateString(),
         ];
-        $result['training_data_source'] = $trainingDataSource;
-        if ($trainingDataSource === 'demo') {
-            $result['warnings'] = array_merge(
-                ['ผลลัพธ์นี้ใช้ข้อมูลราคาตัวอย่าง (DEMO) ในการฝึกสอนโมเดล ห้ามใช้ประกอบการตั้งงบประมาณจริง'],
-                $result['warnings'] ?? [],
-            );
-        }
 
-        // 5. Store result in session for print (user-scoped via Laravel session)
+        // Kept for the asset list and the print view (user-scoped via Laravel session)
         $calculatedAt = now();
         session([
-            'ai_forecast_latest' => $result,
-            'ai_forecast_params' => [
-                'forecast_years'  => $forecastYears,
-                'filter_cat_name' => $categoryName,
-                'filter_org_name' => $orgName,
-                'calculated_at'   => $calculatedAt->format('d/m/') . ($calculatedAt->year + 543) . $calculatedAt->format(' H:i'),
+            'replacement_forecast_latest' => $result,
+            'replacement_forecast_params' => [
+                'forecast_years'   => $forecastYears,
+                'increase_percent' => $increasePercent,
+                'filter_cat_group' => $filterCatGroup,
+                'filter_org_id'    => $filterOrgId,
+                'filter_cat_name'  => $categoryName,
+                'filter_org_name'  => $orgName,
+                'calculated_at'    => $calculatedAt->format('d/m/') . ($calculatedAt->year + 543) . $calculatedAt->format(' H:i'),
             ],
         ]);
 
@@ -702,8 +705,8 @@ class AssetController extends Controller
      */
     public function forecastPrint(): View
     {
-        $result = session('ai_forecast_latest');
-        $params = session('ai_forecast_params', []);
+        $result = session('replacement_forecast_latest');
+        $params = session('replacement_forecast_params', []);
 
         if (!is_array($result) || ($result['success'] ?? false) !== true) {
             abort(404, 'ไม่พบข้อมูลการพยากรณ์ กรุณาคำนวณก่อนจัดพิมพ์');
@@ -716,72 +719,185 @@ class AssetController extends Controller
         ]);
     }
 
+    /** Sortable columns of the forecast asset list (asset fields, as on the forecast print). */
+    private const FORECAST_ASSET_SORTS = [
+        'sequence', 'asset_code', 'category_name', 'category_group', 'organization_name', 'inspect_date',
+        'forecast_year', 'acquisition_value', 'accumulated_depreciation', 'current_value', 'replacement_budget',
+    ];
+
+    /**
+     * GET: assets due for replacement, from the last calculation (session, like forecastPrint()).
+     * ?year= (Gregorian) shows one replacement year, opened from that year on the forecast page;
+     * without it every year of the selected forecast period ("แสดงทั้งหมด").
+     */
+    public function forecastAssets(Request $request): View
+    {
+        $list = $this->forecastAssetList($request);
+        $assets = $list['assets'];
+
+        $perPage = 10;
+        $page = min(max(1, $request->integer('page', 1)), max(1, (int) ceil($assets->count() / $perPage)));
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            $assets->forPage($page, $perPage)->values(),
+            $assets->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()],
+        );
+
+        return view('asset.ASS-003-manage-asset-registration.forecast-assets', [
+            'pageTitle'   => 'รายการครุภัณฑ์ที่ต้องจัดซื้อทดแทน',
+            ...$list,
+            'assets'      => $paginator,
+            // The print and Excel icons export the whole list, in the order shown.
+            'exportQuery' => array_filter($request->only(['year', 'sort', 'direction']), fn ($value) => $value !== null && $value !== ''),
+        ]);
+    }
+
+    /** GET: the forecast asset list as an A4 landscape PDF (print icon), same rows and order as on screen. */
+    public function forecastAssetsPdf(Request $request)
+    {
+        $list = $this->forecastAssetList($request);
+        abort_unless($list['hasResult'] && $list['yearKnown'], 404, 'ไม่พบผลการพยากรณ์ กรุณาคำนวณก่อนจัดพิมพ์');
+
+        $pdf = Pdf::loadView('asset.ASS-003-manage-asset-registration.forecast-assets-pdf', $list)->setPaper('a4', 'landscape');
+        $filename = $this->forecastExportName($list['year'], 'pdf');
+
+        return config('app.pdf_test_mode') ? $pdf->stream($filename) : $pdf->download($filename);
+    }
+
+    /** GET: the forecast asset list as an Excel file (Excel icon), same rows and order as on screen. */
+    public function forecastAssetsExcel(Request $request, XlsxReportService $xlsx)
+    {
+        $list = $this->forecastAssetList($request);
+        abort_unless($list['hasResult'] && $list['yearKnown'], 404, 'ไม่พบผลการพยากรณ์ กรุณาคำนวณก่อนดาวน์โหลด');
+
+        return $xlsx->structuredForecastAssets(
+            $this->forecastExportName($list['year'], 'xlsx'),
+            'รายการครุภัณฑ์ที่ต้องจัดซื้อทดแทน ' . $list['heading'],
+            $list['conditions'],
+            $list['percent'],
+            $list['assets']->all(),
+            $list['totalBudget'],
+        );
+    }
+
+    private function forecastExportName(?int $year, string $extension): string
+    {
+        return 'replacement-forecast-' . ($year !== null ? $year + 543 : 'all') . '.' . $extension;
+    }
+
+    /**
+     * The forecast asset list shared by the page, its PDF and its Excel file: the last calculation in the
+     * session, narrowed to ?year= and ordered by ?sort= / ?direction=.
+     *
+     * @return array<string, mixed>
+     */
+    private function forecastAssetList(Request $request): array
+    {
+        $result = session('replacement_forecast_latest');
+        $params = session('replacement_forecast_params', []);
+        $hasResult = is_array($result) && ($result['success'] ?? false) === true;
+        $year = $request->filled('year') && is_numeric($request->input('year')) ? $request->integer('year') : null;
+
+        $assets = collect($hasResult ? ($result['assets'] ?? []) : [])
+            ->when($year !== null, fn ($assets) => $assets->filter(fn (array $asset) => (int) ($asset['forecast_year'] ?? 0) === $year))
+            ->values();
+
+        // รหัสครุภัณฑ์ as the asset list page shows it, from the asset's current data (the session keeps only ass_code)
+        $displayCodes = $this->forecastDisplayCodes($assets->pluck('asset_id')->filter()->map(fn ($id) => (int) $id)->all());
+        $assets = $assets->map(fn (array $asset, int $index) => $asset + [
+            'sequence'     => $index + 1,
+            'display_code' => $displayCodes[(int) ($asset['asset_id'] ?? 0)] ?? (($asset['asset_code'] ?? '') !== '' ? $asset['asset_code'] : '-'),
+        ]);
+
+        $sort = in_array($request->string('sort')->value(), self::FORECAST_ASSET_SORTS, true) ? $request->string('sort')->value() : '';
+        $direction = $request->string('direction')->value() === 'desc' ? 'desc' : 'asc';
+        if ($sort !== '') {
+            // The code column sorts by the code as shown
+            $sortKey = $sort === 'asset_code' ? 'display_code' : $sort;
+            $value = fn (array $asset) => $asset[$sortKey] ?? null;
+            // Empty values stay last in both directions; equal values keep the calculated order.
+            $assets = $assets->sort(function (array $a, array $b) use ($value, $direction) {
+                [$x, $y] = [$value($a), $value($b)];
+                if ($x === null || $x === '' || $y === null || $y === '') {
+                    return ($x === null || $x === '') <=> ($y === null || $y === '') ?: $a['sequence'] <=> $b['sequence'];
+                }
+                $order = is_numeric($x) && is_numeric($y) ? (float) $x <=> (float) $y : strcmp((string) $x, (string) $y);
+
+                return ($direction === 'desc' ? -$order : $order) ?: $a['sequence'] <=> $b['sequence'];
+            })->values();
+        }
+
+        $startYear = $hasResult ? ($result['start_year'] ?? null) : null;
+        $endYear = $hasResult ? ($result['end_year'] ?? null) : null;
+        $period = $startYear && $endYear
+            ? ($startYear === $endYear ? 'พ.ศ. ' . ($startYear + 543) : 'พ.ศ. ' . ($startYear + 543) . ' – ' . ($endYear + 543))
+            : '';
+        $percent = rtrim(rtrim(number_format((float) ($result['increase_percent'] ?? $params['increase_percent'] ?? 0), 2), '0'), '.');
+        $forecastYears = $params['forecast_years'] ?? ($result['forecast_years'] ?? '-');
+
+        return [
+            'hasResult'   => $hasResult,
+            'result'      => $hasResult ? $result : [],
+            'params'      => $params,
+            'year'        => $year,
+            'yearKnown'   => $year === null || collect($hasResult ? ($result['years'] ?? []) : [])->contains(fn ($y) => (int) ($y['year'] ?? 0) === $year),
+            'period'      => $period,
+            'heading'     => $year !== null ? 'ครบกำหนดทดแทนปี พ.ศ. ' . ($year + 543) : 'ทั้งหมด' . ($period !== '' ? " ({$period})" : ''),
+            'percent'     => $percent,
+            // One line of the calculation's conditions, for the PDF and Excel headers.
+            'conditions'  => "ระยะเวลาพยากรณ์ {$forecastYears} ปี" . ($period !== '' ? " ({$period})" : '')
+                . ' · หมวดครุภัณฑ์: ' . ($params['filter_cat_name'] ?? 'ทั้งหมด')
+                . ' · หน่วยงาน: ' . ($params['filter_org_name'] ?? 'ทั้งหมด')
+                . " · งบประมาณทดแทน = มูลค่าตอนซื้อ + {$percent}%"
+                . (! empty($params['calculated_at']) ? ' · คำนวณเมื่อ ' . $params['calculated_at'] : ''),
+            'assets'      => $assets,
+            'totalBudget' => $assets->sum(fn (array $asset) => (float) ($asset['replacement_budget'] ?? 0)),
+            'sort'        => $sort,
+            'direction'   => $direction,
+        ];
+    }
+
+    /**
+     * Display codes (AssetDisplayService::displayCode, as on the asset list page) by asset id.
+     *
+     * @param  array<int, int>  $assetIds
+     * @return array<int, string>
+     */
+    private function forecastDisplayCodes(array $assetIds): array
+    {
+        $codes = [];
+        // Oracle allows at most 1000 items in an IN list
+        foreach (array_chunk(array_values(array_unique($assetIds)), 1000) as $chunk) {
+            DB::connection('oracle')->table('ASSET AS a')
+                ->join('ASSET_CATEGORY AS c', 'a.asscat_id', '=', 'c.id')
+                ->whereIn('a.id', $chunk)
+                ->select([
+                    'a.id',
+                    'a.ass_code',
+                    'c.asscat_code',
+                    DB::raw("(SELECT MAX(aa2.status) KEEP (DENSE_RANK LAST ORDER BY aa2.id)
+                              FROM ASSET_ASSIGNMENT_LIST aal2
+                              JOIN ASSET_ASSIGNMENT aa2 ON aa2.id = aal2.ass_assign_id
+                              WHERE aal2.asset_id = a.id) AS aa_status"),
+                ])
+                ->get()
+                ->each(function ($row) use (&$codes) {
+                    $codes[(int) $row->id] = $this->assetDisplay->displayCode($row);
+                });
+        }
+
+        return $codes;
+    }
+
     // -------------------------------------------------------------------------
-    // Private helpers for AI forecast
+    // Private helpers for the replacement forecast
     // -------------------------------------------------------------------------
 
     private function forecastError(string $code, string $message, int $status): JsonResponse
     {
         return response()->json(['success' => false, 'code' => $code, 'message' => $message], $status);
-    }
-
-    /** Asset-register fields the AI service does not use or return; they are attached after pricing. */
-    private const DEPRECIATION_FIELDS = [
-        'inspect_date',
-        'useful_life_years',
-        'end_of_life_date',
-        'annual_depreciation',
-        'accumulated_depreciation',
-        'current_value',
-        'stored_remain_price',
-        'depreciation_method',
-    ];
-
-    /**
-     * Attach each candidate's depreciation (AssetDepreciationCalculator, via ReplacementForecastDataService)
-     * to the priced assets. มูลค่าคงเหลือ is accounting data; มูลค่าทดแทน (AI) stays the model output.
-     */
-    private function withDepreciation(array $result, array $candidateAssets): array
-    {
-        $candidatesById = [];
-        foreach ($candidateAssets as $candidate) {
-            $candidatesById[(int) $candidate['asset_id']] = $candidate;
-        }
-
-        $result['assets'] = array_map(function (array $asset) use ($candidatesById): array {
-            $candidate = $candidatesById[(int) ($asset['asset_id'] ?? 0)] ?? [];
-            foreach (self::DEPRECIATION_FIELDS as $field) {
-                if (array_key_exists($field, $candidate)) {
-                    $asset[$field] = $candidate[$field];
-                }
-            }
-
-            return $asset;
-        }, $result['assets'] ?? []);
-
-        return $result;
-    }
-
-    private function loadDemoCsv(string $path): array
-    {
-        $records = [];
-        if (($handle = fopen($path, 'r')) === false) {
-            return [];
-        }
-        $header = null;
-        while (($row = fgetcsv($handle)) !== false) {
-            if ($header === null) { $header = $row; continue; }
-            $rec = array_combine($header, $row);
-            if ($rec === false) continue;
-            $records[] = [
-                'acquisition_year'  => (int) $rec['acquisition_year'],
-                'category_id'       => (int) $rec['category_id'],
-                'category_name'     => $rec['category_name'],
-                'acquisition_value' => (float) $rec['acquisition_value'],
-            ];
-        }
-        fclose($handle);
-        return $records;
     }
 
     /** Returns direct child org records (not self) for the forecast dropdown. */

@@ -5,7 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\GlbOrganization;
 use App\Models\Material;
 use App\Services\FiscalYearService;
-use App\Services\MaterialBalanceService;
+use App\Services\MaterialInventoryService;
+use App\Services\MaterialStockRecommendationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,22 +16,109 @@ use Throwable;
 
 class MaterialBalanceSettingController extends Controller
 {
-    public function __construct(private MaterialBalanceService $balanceService) {}
+    public function __construct(
+        private MaterialInventoryService $inventory,
+        private MaterialStockRecommendationService $recommendations,
+    ) {}
 
     public function index(Request $request): View
+    {
+        $listing    = $this->balanceListing($request);
+        $orgId      = $listing['orgId'];
+        $fiscalYear = $listing['fiscalYear'];
+        $currentFY  = FiscalYearService::current();
+        $isEditable = FiscalYearService::isCurrent($fiscalYear);
+
+        $materials = $listing['query']->paginate(10)->withQueryString();
+        $matIds    = $materials->pluck('id')->map(fn ($id) => (int) $id)->all(); // not map('intval'): the key would become the number base
+        $avgPrices = $this->computeAvgPrices($matIds);
+        $recommendation = $this->recommendations->recommend($orgId, $matIds);
+
+        // Organizations that have received or hold material
+        $organizations = GlbOrganization::query()
+            ->whereRaw('(EXISTS (SELECT 1 FROM MATERIAL_PROCUREMENT mp WHERE mp.org_id = GLB_ORGANIZATION.org_id) OR EXISTS (SELECT 1 FROM MATERIAL_INVENTORY inv WHERE inv.org_id = GLB_ORGANIZATION.org_id))')
+            ->orderBy('org_name')
+            ->get(['org_id', 'org_name']);
+
+        $availableFiscalYears = FiscalYearService::availableYears(5);
+
+        return view('material.MAT-006-record-balance-setting.index', [
+            'pageTitle'            => 'บันทึกการตั้งยอดคงเหลือ',
+            'materials'            => $materials,
+            'avgPrices'            => $avgPrices,
+            'recommended'          => $recommendation['values'],
+            'recommendationMethod' => $recommendation['method'],
+            'recommendationNote'   => $recommendation['note'],
+            'fiscalYear'           => $fiscalYear,
+            'currentFY'            => $currentFY,
+            'isEditable'           => $isEditable,
+            // Balances are kept per organization, so adjusting needs one selected.
+            'canAdjust'            => $isEditable && $orgId !== null,
+            'searchBy'             => $listing['searchBy'],
+            'keyword'              => $listing['keyword'],
+            'sort'                 => $listing['sort'],
+            'direction'            => $listing['direction'],
+            'orgId'                => $orgId,
+            'organizations'        => $organizations,
+            'availableFiscalYears' => $availableFiscalYears,
+            'bulkUpdateUrl'        => route('material.balance.bulk-update'),
+        ]);
+    }
+
+    /** "จัดพิมพ์รายงาน": the list as filtered on screen (every page of it) as an A4 PDF, like the MAT-007 print button. */
+    public function downloadPdf(Request $request)
+    {
+        $listing = $this->balanceListing($request);
+        $orgId   = $listing['orgId'];
+
+        $materials = $listing['query']->get();
+        $matIds    = $materials->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $recommendation = $this->recommendations->recommend($orgId, $matIds);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('material.MAT-006-record-balance-setting.report-pdf', [
+            'materials'          => $materials,
+            'avgPrices'          => $this->computeAvgPrices($matIds),
+            'recommended'        => $recommendation['values'],
+            'fiscalYear'         => $listing['fiscalYear'],
+            'orgName'            => $orgId !== null ? (GlbOrganization::query()->where('org_id', $orgId)->value('org_name') ?? '-') : 'ทุกหน่วยงาน',
+            'searchLine'         => $listing['keyword'] !== ''
+                ? ($listing['searchBy'] === 'code' ? 'รหัสวัสดุ' : 'ชื่อวัสดุ') . 'ที่มีคำว่า "' . $listing['keyword'] . '"'
+                : '',
+            'asOfDate'           => now('Asia/Bangkok')->addYears(543)->locale('th')->translatedFormat('j F Y'),
+        ])->setPaper('a4', 'portrait');
+
+        // "หน้า x / y" bottom right: Dompdf only knows the page count once everything is laid out.
+        $pdf->render();
+        $dompdf = $pdf->getDomPDF();
+        $canvas = $dompdf->getCanvas();
+        $canvas->page_text($canvas->get_width() - 100, $canvas->get_height() - 46, 'หน้า {PAGE_NUM} / {PAGE_COUNT}', $dompdf->getFontMetrics()->getFont('ReportThai'), 12);
+
+        $filename = "material-balance-setting-{$listing['fiscalYear']}.pdf";
+
+        return (config('app.pdf_test_mode') || (in_array(app()->environment(), ['local', 'testing'], true) && $request->boolean('pdf_test')))
+            ? $pdf->stream($filename)
+            : $pdf->download($filename);
+    }
+
+    /**
+     * The material list behind index() and downloadPdf(): the filters from the request and the query they give.
+     *
+     * @return array{query: \Illuminate\Database\Eloquent\Builder, orgId: ?int, fiscalYear: int, searchBy: string, keyword: string, sort: string, direction: string}
+     */
+    private function balanceListing(Request $request): array
     {
         $searchBy    = $request->string('search_by', 'name')->value();
         $keyword     = trim($request->string('keyword')->value());
         $sort        = $request->string('sort', '')->value();
         $direction   = strtolower($request->string('direction', 'asc')->value()) === 'desc' ? 'desc' : 'asc';
-        $orgId       = $request->integer('org_id', 0);
+        // null = every organization; 0 is a real organization (กรมส่งเสริมสหกรณ์), not "all"
+        $orgId       = $request->filled('org_id') && is_numeric($request->input('org_id')) ? $request->integer('org_id') : null;
         $currentFY   = FiscalYearService::current();
         $fiscalYear  = $request->integer('fiscal_year', $currentFY);
         // Clamp to available years
         if ($fiscalYear < $currentFY - 4 || $fiscalYear > $currentFY) {
             $fiscalYear = $currentFY;
         }
-        $isEditable  = FiscalYearService::isCurrent($fiscalYear);
 
         $allowedSorts = [
             'fiscal_year' => null,
@@ -40,29 +128,23 @@ class MaterialBalanceSettingController extends Controller
             'avg_price'   => null,
         ];
 
-        // Real balance aggregated from transaction tables
-        $balanceSubSql = "(SELECT NVL(SUM(delta),0) FROM (
-            SELECT mat_amt AS delta FROM MATERIAL_PROCUREMENT_LIST WHERE mat_id = MATERIALS.id
-            UNION ALL
-            SELECT -mwl.wd_amount FROM MATERIAL_WITHDRAWN_LIST mwl
-                JOIN MATERIAL_WITHDRAWN mw ON mw.id = mwl.mat_wd_id
-                WHERE mwl.mat_id = MATERIALS.id AND mw.status = 2
-            UNION ALL
-            SELECT isp_amount FROM MATERIAL_INSPECTION_LIST WHERE mat_id = MATERIALS.id
-        ))";
+        // Balance from MATERIAL_INVENTORY: the selected organization's row, or the stock held across all of them.
+        $balanceSubSql = $orgId !== null
+            ? "(SELECT NVL(SUM(inv.inv_amt), 0) FROM MATERIAL_INVENTORY inv WHERE inv.mat_id = MATERIALS.id AND inv.org_id = {$orgId})"
+            : "(SELECT NVL(SUM(inv.inv_amt), 0) FROM MATERIAL_INVENTORY inv WHERE inv.mat_id = MATERIALS.id AND inv.inv_amt > 0)";
 
         $query = Material::query()
             ->select('MATERIALS.*')
             ->addSelect(DB::raw("{$balanceSubSql} AS current_balance"));
 
-        // Filter by organization via procurement records
-        if ($orgId > 0) {
+        // Materials the organization received or holds stock of (stock can also arrive by transfer)
+        if ($orgId !== null) {
             $query->whereRaw(
-                'EXISTS (SELECT 1 FROM MATERIAL_PROCUREMENT_LIST mpl JOIN MATERIAL_PROCUREMENT mp ON mp.id = mpl.mat_pro_id WHERE mpl.mat_id = MATERIALS.id AND mp.org_id = ?)',
-                [$orgId]
+                '(EXISTS (SELECT 1 FROM MATERIAL_PROCUREMENT_LIST mpl JOIN MATERIAL_PROCUREMENT mp ON mp.id = mpl.mat_pro_id WHERE mpl.mat_id = MATERIALS.id AND mp.org_id = ?) OR EXISTS (SELECT 1 FROM MATERIAL_INVENTORY inv WHERE inv.mat_id = MATERIALS.id AND inv.org_id = ?))',
+                [$orgId, $orgId]
             );
         } else {
-            $query->whereRaw('EXISTS (SELECT 1 FROM MATERIAL_PROCUREMENT_LIST mpl WHERE mpl.mat_id = MATERIALS.id)');
+            $query->whereRaw('(EXISTS (SELECT 1 FROM MATERIAL_PROCUREMENT_LIST mpl WHERE mpl.mat_id = MATERIALS.id) OR EXISTS (SELECT 1 FROM MATERIAL_INVENTORY inv WHERE inv.mat_id = MATERIALS.id))');
         }
 
         if ($keyword !== '') {
@@ -89,34 +171,15 @@ class MaterialBalanceSettingController extends Controller
             $query->orderBy($sortColumn, $direction);
         }
 
-        $materials = $query->paginate(10)->withQueryString();
-        $matIds    = $materials->pluck('id')->map('intval')->toArray();
-        $avgPrices = $this->computeAvgPrices($matIds);
-
-        // Organizations that have procurement records
-        $organizations = GlbOrganization::query()
-            ->whereRaw('EXISTS (SELECT 1 FROM MATERIAL_PROCUREMENT mp WHERE mp.org_id = GLB_ORGANIZATION.org_id)')
-            ->orderBy('org_name')
-            ->get(['org_id', 'org_name']);
-
-        $availableFiscalYears = FiscalYearService::availableYears(5);
-
-        return view('material.MAT-006-record-balance-setting.index', [
-            'pageTitle'            => 'บันทึกการตั้งยอดคงเหลือ',
-            'materials'            => $materials,
-            'avgPrices'            => $avgPrices,
-            'fiscalYear'           => $fiscalYear,
-            'currentFY'            => $currentFY,
-            'isEditable'           => $isEditable,
-            'searchBy'             => $searchBy,
-            'keyword'              => $keyword,
-            'sort'                 => $sort,
-            'direction'            => $direction,
-            'orgId'                => $orgId,
-            'organizations'        => $organizations,
-            'availableFiscalYears' => $availableFiscalYears,
-            'bulkUpdateUrl'        => route('material.balance.bulk-update'),
-        ]);
+        return [
+            'query'      => $query,
+            'orgId'      => $orgId,
+            'fiscalYear' => $fiscalYear,
+            'searchBy'   => $searchBy,
+            'keyword'    => $keyword,
+            'sort'       => $sort,
+            'direction'  => $direction,
+        ];
     }
 
     public function bulkUpdate(Request $request): JsonResponse
@@ -131,8 +194,12 @@ class MaterialBalanceSettingController extends Controller
             ], 422);
         }
 
-        $orgId = (int) $request->input('organization_id', 0);
+        $orgId = $this->organizationFrom($request->input('organization_id'));
         $items = $request->input('items', []);
+
+        if ($orgId === null) {
+            return response()->json(['success' => false, 'error' => 'กรุณาเลือกหน่วยงานก่อนปรับปรุงยอดคงเหลือ'], 422);
+        }
 
         if (! is_array($items) || count($items) === 0) {
             return response()->json(['success' => false, 'error' => 'ไม่มีรายการที่จะบันทึก'], 422);
@@ -157,49 +224,12 @@ class MaterialBalanceSettingController extends Controller
         try {
             DB::connection('oracle')->transaction(function () use ($items, $orgId): void {
                 foreach ($items as $item) {
-                    $matId  = (int) $item['material_id'];
-                    $invAmt = (float) $item['balance'];
-
-                    // Verify material exists
-                    $mat = Material::query()->find($matId);
-                    if (! $mat) {
+                    $matId = (int) $item['material_id'];
+                    if (! Material::query()->find($matId)) {
                         throw new \RuntimeException("ไม่พบวัสดุ ID: {$matId}");
                     }
 
-                    $existing = DB::connection('oracle')
-                        ->table('MATERIAL_INVENTORY')
-                        ->where('mat_id', $matId)
-                        ->first();
-
-                    if ($existing) {
-                        DB::connection('oracle')
-                            ->table('MATERIAL_INVENTORY')
-                            ->where('mat_id', $matId)
-                            ->update(['inv_amt' => $invAmt, 'updated_at' => now(), 'updated_by' => 1]);
-                    } else {
-                        $resolvedOrgId = $orgId > 0 ? $orgId : (int) (
-                            DB::connection('oracle')
-                                ->table('MATERIAL_PROCUREMENT')
-                                ->join('MATERIAL_PROCUREMENT_LIST', 'MATERIAL_PROCUREMENT.id', '=', 'MATERIAL_PROCUREMENT_LIST.mat_pro_id')
-                                ->where('MATERIAL_PROCUREMENT_LIST.mat_id', $matId)
-                                ->orderBy('MATERIAL_PROCUREMENT.id')
-                                ->value('MATERIAL_PROCUREMENT.org_id') ?? 1
-                        );
-                        $nextId = (int) DB::connection('oracle')->selectOne('SELECT NVL(MAX(id),0)+1 AS next_id FROM MATERIAL_INVENTORY')->next_id;
-                        DB::connection('oracle')
-                            ->table('MATERIAL_INVENTORY')
-                            ->insert([
-                                'id'         => $nextId,
-                                'org_id'     => $resolvedOrgId,
-                                'mat_id'     => $matId,
-                                'inv_amt'    => $invAmt,
-                                'inv_price'  => 0,
-                                'created_by' => 1,
-                                'updated_by' => 1,
-                                'created_at' => now(),
-                                'updated_at' => now(),
-                            ]);
-                    }
+                    $this->inventory->setBalance($orgId, $matId, (float) $item['balance'], (int) auth()->id());
                 }
             });
         } catch (Throwable $e) {
@@ -222,42 +252,16 @@ class MaterialBalanceSettingController extends Controller
             return response()->json(['success' => false, 'error' => 'ยอดคงเหลือต้องเป็นตัวเลขที่ไม่ติดลบ']);
         }
 
+        $orgId = $this->organizationFrom($request->input('organization_id'));
+        if ($orgId === null) {
+            return response()->json(['success' => false, 'error' => 'กรุณาเลือกหน่วยงานก่อนปรับปรุงยอดคงเหลือ'], 422);
+        }
+
         $matId   = (int) $material->id;
         $invAmt  = (float) $balance;
 
         try {
-            $existing = DB::connection('oracle')
-                ->table('MATERIAL_INVENTORY')
-                ->where('mat_id', $matId)
-                ->first();
-
-            if ($existing) {
-                DB::connection('oracle')
-                    ->table('MATERIAL_INVENTORY')
-                    ->where('mat_id', $matId)
-                    ->update(['inv_amt' => $invAmt]);
-            } else {
-                $orgId = (int) (DB::connection('oracle')
-                    ->table('MATERIAL_PROCUREMENT')
-                    ->join('MATERIAL_PROCUREMENT_LIST', 'MATERIAL_PROCUREMENT.id', '=', 'MATERIAL_PROCUREMENT_LIST.mat_pro_id')
-                    ->where('MATERIAL_PROCUREMENT_LIST.mat_id', $matId)
-                    ->orderBy('MATERIAL_PROCUREMENT.id')
-                    ->value('MATERIAL_PROCUREMENT.org_id') ?? 1);
-                $nextId = (int) DB::connection('oracle')->selectOne('SELECT NVL(MAX(id),0)+1 AS next_id FROM MATERIAL_INVENTORY')->next_id;
-                DB::connection('oracle')
-                    ->table('MATERIAL_INVENTORY')
-                    ->insert([
-                        'id'         => $nextId,
-                        'org_id'     => $orgId,
-                        'mat_id'     => $matId,
-                        'inv_amt'    => $invAmt,
-                        'inv_price'  => 0,
-                        'created_by' => 1,
-                        'updated_by' => 1,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-            }
+            DB::connection('oracle')->transaction(fn () => $this->inventory->setBalance($orgId, $matId, $invAmt, (int) auth()->id()));
         } catch (Throwable $e) {
             Log::error('MAT-006 updateBalance failed', ['mat_id' => $matId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'บันทึกไม่สำเร็จ กรุณาลองใหม่']);
@@ -364,6 +368,16 @@ class MaterialBalanceSettingController extends Controller
         }
 
         return $result;
+    }
+
+    /** The organization balances are set for; it must exist, and 0 (กรมส่งเสริมสหกรณ์) is a valid one. */
+    private function organizationFrom(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        return GlbOrganization::query()->where('org_id', (int) $value)->exists() ? (int) $value : null;
     }
 
     private function escapeLike(string $value): string

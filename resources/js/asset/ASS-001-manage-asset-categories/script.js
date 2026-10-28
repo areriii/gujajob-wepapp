@@ -103,17 +103,7 @@ function closeOverlay(overlay) {
     overlay.setAttribute('aria-hidden', 'true');
 }
 
-function initializeAssetCategoryCreatePopup() {
-    // Success modal (shown after server-side redirect with flash)
-    const successClose = document.getElementById('closeAssetCategorySuccessModal');
-    const successOverlay = document.getElementById('assetCategorySuccessOverlay');
-    if (successClose && successOverlay) {
-        successClose.addEventListener('click', () => closeOverlay(successOverlay));
-        successOverlay.addEventListener('click', (e) => {
-            if (e.target === successOverlay) closeOverlay(successOverlay);
-        });
-    }
-
+function initializeAssetCategoryDeletePopup() {
     // Delete modal
     const deleteOverlay   = document.getElementById('deleteAssetCategoryOverlay');
     const cancelDeleteBtn = document.getElementById('cancelDeleteAssetCategoryButton');
@@ -160,7 +150,7 @@ document.addEventListener('keydown', (event) => {
 initializeSidebarGroups();
 preventDisabledMenuReload();
 initializeAssetCategorySearch();
-initializeAssetCategoryCreatePopup();
+initializeAssetCategoryDeletePopup();
 initializeAssetCategoryAutocomplete();
 
 /* ===== Autocomplete for ASS-001 search bar ===== */
@@ -540,72 +530,48 @@ function initializeAssetCategoryAutocomplete() {
 
 
 
-/* ===== ASS-001 show/edit popup actions ===== */
+/* ===== ASS-001 create/edit confirm popups ===== */
 
-function initializeAssetCategoryShowEditActions() {
-    const deleteOverlay = document.getElementById('deleteAssetCategoryOverlay');
-    const openDeleteButton = document.getElementById('openDeleteAssetCategoryPopup');
-    const cancelDeleteButton = document.getElementById('cancelDeleteAssetCategoryButton');
-    const confirmDeleteButton = document.getElementById('confirmDeleteAssetCategoryButton');
+function initializeAssetCategoryConfirmPopup(overlayId, formId, cancelId, confirmId) {
+    const saveButton = document.getElementById('saveAssetCategoryButton');
+    const overlay = document.getElementById(overlayId);
+    const form = document.getElementById(formId);
+    const cancelButton = document.getElementById(cancelId);
+    const confirmButton = document.getElementById(confirmId);
 
-    const editOverlay = document.getElementById('editAssetCategoryOverlay');
-    const openEditButton = document.getElementById('openEditAssetCategoryPopup');
-    const cancelEditButton = document.getElementById('cancelEditAssetCategoryButton');
-    const confirmEditButton = document.getElementById('confirmEditAssetCategoryButton');
+    if (!saveButton || !overlay || !form) return;
 
-    if (openDeleteButton && deleteOverlay) {
-        openDeleteButton.addEventListener('click', () => {
-            openOverlay(deleteOverlay);
-        });
-    }
+    // Required fields are checked first by the global save validation (capture phase)
+    saveButton.addEventListener('click', () => {
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
 
-    if (cancelDeleteButton && deleteOverlay) {
-        cancelDeleteButton.addEventListener('click', () => {
-            closeOverlay(deleteOverlay);
-        });
-    }
+        openOverlay(overlay);
+    });
 
-    if (confirmDeleteButton && deleteOverlay) {
-        confirmDeleteButton.addEventListener('click', () => {
-            closeOverlay(deleteOverlay);
-            window.location.href = '/asset/ASS-001-manage-asset-categories';
-        });
-    }
+    cancelButton?.addEventListener('click', () => closeOverlay(overlay));
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) closeOverlay(overlay);
+    });
 
-    if (deleteOverlay) {
-        deleteOverlay.addEventListener('click', (event) => {
-            if (event.target === deleteOverlay) {
-                closeOverlay(deleteOverlay);
-            }
-        });
-    }
-
-    if (openEditButton && editOverlay) {
-        openEditButton.addEventListener('click', () => {
-            openOverlay(editOverlay);
-        });
-    }
-
-    if (cancelEditButton && editOverlay) {
-        cancelEditButton.addEventListener('click', () => {
-            closeOverlay(editOverlay);
-        });
-    }
-
-    if (confirmEditButton && editOverlay) {
-        confirmEditButton.addEventListener('click', () => {
-            closeOverlay(editOverlay);
-            window.location.href = '/asset/ASS-001-manage-asset-categories';
-        });
-    }
-
-    if (editOverlay) {
-        editOverlay.addEventListener('click', (event) => {
-            if (event.target === editOverlay) {
-                closeOverlay(editOverlay);
-            }
-        });
-    }
+    confirmButton?.addEventListener('click', () => {
+        confirmButton.disabled = true;
+        form.submit();
+    });
 }
 
-initializeAssetCategoryShowEditActions();
+initializeAssetCategoryConfirmPopup(
+    'saveAssetCategoryOverlay',
+    'assetCategoryCreateForm',
+    'cancelSaveAssetCategoryButton',
+    'confirmSaveAssetCategoryButton',
+);
+
+initializeAssetCategoryConfirmPopup(
+    'editAssetCategoryOverlay',
+    'assetCategoryEditForm',
+    'cancelEditAssetCategoryButton',
+    'confirmEditAssetCategoryButton',
+);

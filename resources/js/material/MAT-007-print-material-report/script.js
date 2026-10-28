@@ -96,9 +96,7 @@ function initializeMaterialReportPage() {
     const previewButton = document.getElementById('previewReportButton');
 
     const mainDepartment = document.getElementById('mainDepartment');
-    const subDepartment = document.getElementById('subDepartment');
     const mainDepartmentId = document.getElementById('mainDepartmentId');
-    const subDepartmentId = document.getElementById('subDepartmentId');
 
     if (!reportTypeButtons.length) {
         return;
@@ -128,12 +126,7 @@ function initializeMaterialReportPage() {
     }
 
     mainDepartment.addEventListener('input', () => { document.getElementById('orgError').textContent = ''; });
-    subDepartment.addEventListener('input', () => { document.getElementById('subOrgError').textContent = ''; });
-    autocomplete(mainDepartment, mainDepartmentId, document.getElementById('mainDepartmentSuggestions'), mainDepartment.dataset.searchUrl, () => ({}), () => {
-        subDepartment.value = ''; subDepartmentId.value = ''; subDepartment.disabled = !mainDepartmentId.value;
-        document.getElementById('subOrgError').textContent = '';
-    });
-    autocomplete(subDepartment, subDepartmentId, document.getElementById('subDepartmentSuggestions'), subDepartment.dataset.searchUrl, () => ({ parent_org_id: mainDepartmentId.value }), () => {});
+    autocomplete(mainDepartment, mainDepartmentId, document.getElementById('mainDepartmentSuggestions'), mainDepartment.dataset.searchUrl, () => ({}));
 
     reportTypeButtons.forEach((button) => {
         button.addEventListener('click', () => {
@@ -145,7 +138,6 @@ function initializeMaterialReportPage() {
 
     if (previewButton) {
         mainDepartment?.addEventListener('change', () => { document.getElementById('orgError').textContent = ''; });
-        subDepartment?.addEventListener('change', () => { document.getElementById('subOrgError').textContent = ''; });
         const updateAction = () => {
             const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
             previewButton.classList.toggle('download-btn', isExcel);
@@ -159,13 +151,12 @@ function initializeMaterialReportPage() {
 
         previewButton.addEventListener('click', () => {
             document.getElementById('orgError').textContent = '';
-            document.getElementById('subOrgError').textContent = '';
             const orgId = mainDepartmentId.value;
-            const subOrgId = subDepartmentId.value;
-            if (!orgId || orgId === '0') document.getElementById('orgError').textContent = 'กรุณากรอกข้อมูล';
-            if (!subOrgId || subOrgId === '0') document.getElementById('subOrgError').textContent = 'กรุณากรอกข้อมูล';
-            if (!orgId || orgId === '0' || !subOrgId || subOrgId === '0') return;
-            const params = new URLSearchParams({ org_id: orgId, sub_org_id: subOrgId });
+            if (!orgId || orgId === '0') {
+                document.getElementById('orgError').textContent = 'กรุณากรอกข้อมูล';
+                return;
+            }
+            const params = new URLSearchParams({ org_id: orgId });
             const target = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx'
                 ? previewButton.dataset.exportUrl
                 : previewButton.dataset.previewUrl;

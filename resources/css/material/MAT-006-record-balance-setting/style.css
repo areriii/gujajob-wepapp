@@ -269,6 +269,11 @@ select {
     background: #edf0f3;
 }
 
+/* Organization search box: keep the text clear of the dropdown arrow */
+.field-group .guja-autocomplete__input {
+    padding-right: 32px;
+}
+
 .field-group input:focus,
 .field-group select:focus {
     border-color: var(--primary);
@@ -401,42 +406,58 @@ select {
 
 .balance-table th:nth-child(1),
 .balance-table td:nth-child(1) {
-    width: 12%;
+    width: 10%;
 }
 
 .balance-table th:nth-child(2),
 .balance-table td:nth-child(2) {
-    width: 12%;
+    width: 11%;
 }
 
 .balance-table th:nth-child(3),
 .balance-table td:nth-child(3) {
-    width: 18%;
+    width: 23%;
 }
 
 .balance-table th:nth-child(4),
 .balance-table td:nth-child(4) {
-    width: 14%;
+    width: 8%;
 }
 
 .balance-table th:nth-child(5),
 .balance-table td:nth-child(5) {
-    width: 9%;
+    width: 13%;
 }
 
 .balance-table th:nth-child(6),
 .balance-table td:nth-child(6) {
-    width: 14%;
+    width: 12%;
 }
 
 .balance-table th:nth-child(7),
 .balance-table td:nth-child(7) {
-    width: 14%;
+    width: 13%;
 }
 
 .balance-table th:nth-child(8),
 .balance-table td:nth-child(8) {
     width: 10%;
+}
+
+/* จำนวนเฉลี่ยในการเบิกต่อเดือน: average monthly withdrawal over the last 12 months, shown as a hint */
+.balance-table td.recommended-balance {
+    color: #9ca3af;
+}
+
+.recommended-method {
+    margin-left: 4px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #e0e7ff;
+    color: #3730a3;
+    font-size: 10px;
+    font-weight: 800;
+    vertical-align: middle;
 }
 
 .blue-text {
@@ -774,12 +795,28 @@ select {
 }
 
 .confirm-icon {
-    width: 48px;
-    height: 48px;
+    width: 52px;
+    height: 52px;
     margin: 0 auto 28px;
     display: grid;
     place-items: center;
     border-radius: 50%;
+}
+
+/* Same green tick as the confirm-save pop-ups on the other pages (MAT-001) */
+.confirm-icon svg {
+    width: 26px;
+    height: 26px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.success-confirm-icon {
+    background: #0ca678;
+    color: #ffffff;
 }
 
 .edit-confirm-icon {
@@ -830,6 +867,16 @@ select {
     border: 1px solid #d8dee8;
     background: #ffffff;
     color: #374151;
+}
+
+.success-confirm-btn {
+    border: 1px solid #0ca678;
+    background: #0ca678;
+    color: #ffffff;
+}
+
+.success-confirm-btn:hover {
+    background: #099268;
 }
 
 .edit-confirm-btn {

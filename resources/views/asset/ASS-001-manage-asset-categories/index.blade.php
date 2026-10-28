@@ -136,24 +136,6 @@
         </section>
     </div>
 
-    {{-- Success modal --}}
-    @if (session('asset_category_success'))
-        <div class="confirm-overlay is-visible" id="assetCategorySuccessOverlay" aria-hidden="false">
-            <div class="confirm-modal" role="dialog" aria-modal="true">
-                <div class="confirm-icon success-confirm-icon">
-                    <svg><use href="#icon-success"></use></svg>
-                </div>
-                <h3>ดำเนินการสำเร็จ</h3>
-                <p>{{ session('asset_category_success') }}</p>
-                <div class="confirm-actions" style="grid-template-columns:1fr;">
-                    <button class="modal-confirm-btn success-confirm-btn" type="button" id="closeAssetCategorySuccessModal">
-                        ตกลง
-                    </button>
-                </div>
-            </div>
-        </div>
-    @endif
-
     {{-- Delete confirmation modal --}}
     <div class="confirm-overlay" id="deleteAssetCategoryOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true">

@@ -232,7 +232,7 @@
 
             <div class="confirm-actions">
                 <button type="button" id="approveCancelBtn" class="modal-cancel-btn">ยกเลิก</button>
-                <button type="button" id="approveConfirmBtn" class="success-confirm-btn">ยืนยันการอนุมัติ</button>
+                <button type="button" id="approveConfirmBtn" class="modal-confirm-btn approve-confirm-btn">ยืนยันการอนุมัติ</button>
             </div>
         </div>
     </div>
@@ -266,7 +266,7 @@
 
             <div class="confirm-actions">
                 <button type="button" id="rejectCancelBtn" class="modal-cancel-btn">ยกเลิก</button>
-                <button type="button" id="rejectConfirmBtn" class="danger-confirm-btn">ยืนยันไม่อนุมัติ</button>
+                <button type="button" id="rejectConfirmBtn" class="modal-confirm-btn reject-confirm-btn">ยืนยันไม่อนุมัติ</button>
             </div>
         </div>
     </div>

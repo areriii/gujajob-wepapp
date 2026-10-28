@@ -6,7 +6,8 @@ use App\Models\GlbOrganization;
 use App\Models\Material;
 use App\Models\MaterialWithdrawn;
 use App\Models\MaterialWithdrawnList;
-use App\Services\MaterialBalanceService;
+use App\Services\MaterialInventoryService;
+use App\Services\MaterialWithdrawRecommendationService;
 use App\Services\OrganizationVisibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +23,7 @@ use Throwable;
 class MaterialWithdrawController extends Controller
 {
     public function __construct(
-        private readonly MaterialBalanceService $balanceService,
+        private readonly MaterialInventoryService $inventory,
         private readonly OrganizationVisibilityService $orgVisibility,
     ) {}
 
@@ -144,7 +145,7 @@ class MaterialWithdrawController extends Controller
             // For INTERNAL_USE, pre-check stock before transaction
             if ($isInternalUse) {
                 $matIds   = collect($rawItems)->pluck('mat_id')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
-                $balances = $this->balanceService->getBalances($matIds);
+                $balances = $org ? $this->inventory->available((int) $org->org_id, $matIds) : [];
 
                 foreach ($rawItems as $item) {
                     $matId  = (int) ($item['mat_id'] ?? 0);
@@ -299,7 +300,8 @@ class MaterialWithdrawController extends Controller
                     ->values()
                     ->all();
 
-                $balances = $this->balanceService->getBalances($matIdsToCheck);
+                $sourceOrgId = $this->inventory->sourceOrgId($record->org_id !== null ? (int) $record->org_id : null, $record->withdraw_type ?? 'LARGE_LOT');
+                $balances = $sourceOrgId !== null ? $this->inventory->available($sourceOrgId, $matIdsToCheck, (int) $record->id) : [];
 
                 $submittedDetailIds = [];
                 $seenMatIds         = [];
@@ -483,8 +485,8 @@ class MaterialWithdrawController extends Controller
                     ->filter(fn ($id) => $id > 0)
                     ->unique()->values()->all();
 
-                $balances = $validated['withdraw_action'] === 'INTERNAL_USE'
-                    ? $this->balanceService->getBalances($matIdsToCheck)
+                $balances = $validated['withdraw_action'] === 'INTERNAL_USE' && $locked->org_id !== null
+                    ? $this->inventory->available((int) $locked->org_id, $matIdsToCheck)
                     : [];
 
                 // Rebuild details
@@ -596,7 +598,8 @@ class MaterialWithdrawController extends Controller
 
     /**
      * AJAX: returns the current available balance for a material.
-     * Uses MaterialBalanceService (computed from real Oracle transactions).
+     * Available stock (MATERIAL_INVENTORY minus approved, not yet received withdrawals) in the store the
+     * chosen withdrawal type draws on.
      * Returns {"available": N}. Returns 0 when the material exists but has no
      * transaction history yet.
      */
@@ -608,10 +611,39 @@ class MaterialWithdrawController extends Controller
             return response()->json(['available' => null]);
         }
 
-        $balances  = $this->balanceService->getBalances([$matId]);
-        $available = $balances[$matId] ?? 0;
+        // From the store the withdrawal draws on: the parent organization (LARGE_LOT) or the own one (INTERNAL_USE).
+        $mode = $request->input('withdraw_mode') === 'INTERNAL_USE' ? 'INTERNAL_USE' : 'LARGE_LOT';
+        $ownOrgId = Auth::user()?->org_id !== null ? (int) Auth::user()->org_id : null;
+        $sourceOrgId = $this->inventory->sourceOrgId($ownOrgId, $mode) ?? $ownOrgId;
+        if ($sourceOrgId === null) {
+            return response()->json(['available' => null]);
+        }
+
+        $available = (int) ($this->inventory->available($sourceOrgId, [$matId])[$matId] ?? 0);
 
         return response()->json(['available' => $available]);
+    }
+
+    /** Materials this organization usually withdraws together with the ones on the new withdrawal. */
+    public function recommendations(Request $request, MaterialWithdrawRecommendationService $recommender): JsonResponse
+    {
+        $ownOrgId = Auth::user()?->org_id !== null ? (int) Auth::user()->org_id : null;
+        $matIds = array_filter(array_map('intval', explode(',', (string) $request->input('mat_ids', ''))));
+        if ($ownOrgId === null || $matIds === []) {
+            return response()->json(['data' => []]);
+        }
+
+        $recommendations = $recommender->recommend($ownOrgId, $matIds);
+
+        // Stock in the store this withdrawal draws on, as in stockCheck()
+        $mode = $request->input('withdraw_mode') === 'INTERNAL_USE' ? 'INTERNAL_USE' : 'LARGE_LOT';
+        $sourceOrgId = $this->inventory->sourceOrgId($ownOrgId, $mode) ?? $ownOrgId;
+        $available = $recommendations === [] ? [] : $this->inventory->available($sourceOrgId, array_column($recommendations, 'mat_id'));
+
+        return response()->json(['data' => array_map(
+            fn (array $rec) => $rec + ['available' => (int) ($available[$rec['mat_id']] ?? 0)],
+            $recommendations
+        )]);
     }
 
     // =========================================================

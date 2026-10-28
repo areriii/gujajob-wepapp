@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Replacement timing and มูลค่าคงเหลือ come from the asset register through AssetDepreciationCalculator
  * (the same depreciation rules as the ASS-009 asset control register), starting from the acceptance date
- * (inspect_date). The AI service only predicts how much a replacement will cost.
+ * (inspect_date). The budget is calculated from the purchase value (ReplacementBudgetCalculator).
  */
 class ReplacementForecastDataService
 {
@@ -43,6 +43,8 @@ class ReplacementForecastDataService
             ->whereNotNull('a.ass_lifetime')
             ->where('a.ass_lifetime', '>', 0)
             ->where('a.ass_status', '!=', '3')
+            // ซื้อทดแทนแล้ว ('yes'): the replacement is bought, so the asset is not forecast again
+            ->where('a.replacement_status', 'no')
             ->whereRaw("{$endYearExpr} >= ?", [$baseYear + 1])
             ->whereRaw("{$endYearExpr} <= ?", [$baseYear + $forecastYears])
             ->select([
@@ -108,36 +110,6 @@ class ReplacementForecastDataService
                 'forecast_year'            => (int) $r->forecast_year,
             ];
         })->values()->all();
-    }
-
-    /**
-     * Historical purchase prices used to train the AI model. Covers every visible
-     * organization; the screen's category/organization filters do not narrow it.
-     *
-     * @param  int[]  $visibleOrgIds
-     * @return list<array{acquisition_year: int, category_id: int, category_name: string, acquisition_value: float}>
-     */
-    public function trainingRecords(array $visibleOrgIds): array
-    {
-        return DB::connection('oracle')->table('ASSET AS a')
-            ->join('ASSET_CATEGORY AS c', 'a.asscat_id', '=', 'c.id')
-            ->whereIn('a.org_id', $visibleOrgIds)
-            ->whereNotNull('a.inspect_date')
-            ->whereNotNull('a.ass_price')
-            ->where('a.ass_price', '>', 0)
-            ->select([
-                DB::raw('EXTRACT(YEAR FROM a.inspect_date) AS acquisition_year'),
-                'a.asscat_id AS category_id',
-                'c.asscat_name AS category_name',
-                'a.ass_price AS acquisition_value',
-            ])
-            ->get()
-            ->map(fn ($r) => [
-                'acquisition_year'  => (int) $r->acquisition_year,
-                'category_id'       => (int) $r->category_id,
-                'category_name'     => $r->category_name ?? '-',
-                'acquisition_value' => (float) $r->acquisition_value,
-            ])->values()->all();
     }
 
     public function categoryGroupExists(string $categoryGroup): bool

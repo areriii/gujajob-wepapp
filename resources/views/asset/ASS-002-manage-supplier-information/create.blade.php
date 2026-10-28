@@ -130,8 +130,8 @@
     {{-- Save confirmation modal (green) --}}
     <div class="confirm-overlay" id="saveSupplierOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true">
-            <div class="confirm-icon success-confirm-icon">
-                <svg><use href="#icon-check-circle"></use></svg>
+            <div class="confirm-icon success-confirm-icon save-confirm-icon">
+                <svg><use href="#icon-success"></use></svg>
             </div>
             <h3>ยืนยันการบันทึกข้อมูล</h3>
             <p>คุณแน่ใจหรือไม่ว่าต้องการบันทึกข้อมูลผู้ประกอบการนี้</p>

@@ -18,7 +18,7 @@
                 <div class="form-error-box" style="margin-bottom:16px;">{{ $errors->first('general') }}</div>
             @endif
 
-            <form class="asset-category-form" method="POST" action="{{ route('asset.categories.store') }}" autocomplete="off">
+            <form class="asset-category-form" id="assetCategoryCreateForm" method="POST" action="{{ route('asset.categories.store') }}" autocomplete="off">
                 @csrf
                 <div class="form-grid">
                     <div class="form-field">
@@ -114,12 +114,27 @@
 
                 <div class="form-actions">
                     <a class="cancel-btn" href="{{ route('asset.categories.index') }}">ย้อนกลับ</a>
-                    <button class="submit-btn" type="submit">
+                    <button class="submit-btn" type="button" id="saveAssetCategoryButton">
                         บันทึก
                     </button>
                 </div>
             </form>
         </section>
+    </div>
+
+    {{-- Save confirmation modal (green) --}}
+    <div class="confirm-overlay" id="saveAssetCategoryOverlay" aria-hidden="true">
+        <div class="confirm-modal" role="dialog" aria-modal="true">
+            <div class="confirm-icon success-confirm-icon save-confirm-icon">
+                <svg><use href="#icon-success"></use></svg>
+            </div>
+            <h3>ยืนยันการบันทึกข้อมูล</h3>
+            <p>คุณแน่ใจหรือไม่ว่าต้องการบันทึกข้อมูลประเภทครุภัณฑ์นี้</p>
+            <div class="confirm-actions">
+                <button class="modal-cancel-btn" type="button" id="cancelSaveAssetCategoryButton">ยกเลิก</button>
+                <button class="modal-confirm-btn success-confirm-btn" type="button" id="confirmSaveAssetCategoryButton">ยืนยันการบันทึก</button>
+            </div>
+        </div>
     </div>
 @endsection
 

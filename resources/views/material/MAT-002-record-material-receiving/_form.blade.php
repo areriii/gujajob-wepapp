@@ -377,7 +377,7 @@
 
 <div class="confirm-overlay" id="saveReceivingOverlay" aria-hidden="true">
     <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="saveReceivingConfirmTitle">
-        <div class="confirm-icon">
+        <div class="confirm-icon save-confirm-icon">
             <svg><use href="#icon-success"></use></svg>
         </div>
 

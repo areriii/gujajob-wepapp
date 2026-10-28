@@ -18,7 +18,7 @@
                 <div class="form-error-box" style="margin-bottom:16px;">{{ $errors->first('general') }}</div>
             @endif
 
-            <form class="asset-category-form" method="POST" action="{{ route('asset.categories.update', $category->id) }}" autocomplete="off">
+            <form class="asset-category-form" id="assetCategoryEditForm" method="POST" action="{{ route('asset.categories.update', $category->id) }}" autocomplete="off">
                 @csrf
                 @method('PUT')
                 <div class="form-grid">
@@ -110,12 +110,30 @@
 
                 <div class="form-actions detail-actions">
                     <a class="cancel-btn" href="{{ route('asset.categories.index') }}">ย้อนกลับ</a>
-                    <button class="submit-btn" type="submit">
+                    <button class="submit-btn" type="button" id="saveAssetCategoryButton">
                         บันทึก
                     </button>
                 </div>
             </form>
         </section>
+    </div>
+
+    {{-- Edit confirmation modal (yellow) --}}
+    <div class="confirm-overlay" id="editAssetCategoryOverlay" aria-hidden="true">
+        <div class="confirm-modal" role="dialog" aria-modal="true">
+            <div class="confirm-icon edit-confirm-icon">
+                <svg><use href="#icon-square-pen"></use></svg>
+            </div>
+            <h3>ยืนยันการแก้ไขข้อมูล</h3>
+            <p>
+                คุณแน่ใจหรือไม่ว่าต้องการแก้ไขข้อมูลประเภทครุภัณฑ์<br>
+                การดำเนินการนี้ไม่สามารถเรียกคืนได้
+            </p>
+            <div class="confirm-actions">
+                <button class="modal-cancel-btn" type="button" id="cancelEditAssetCategoryButton">ยกเลิก</button>
+                <button class="modal-confirm-btn edit-confirm-btn" type="button" id="confirmEditAssetCategoryButton">ยืนยันการแก้ไข</button>
+            </div>
+        </div>
     </div>
 @endsection
 

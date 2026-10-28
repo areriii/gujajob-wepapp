@@ -77,7 +77,7 @@
 
     <div class="confirm-overlay" id="confirmOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true">
-            <div class="confirm-icon success-icon">
+            <div class="confirm-icon success-icon save-confirm-icon">
                 <svg><use href="#icon-success"></use></svg>
             </div>
 

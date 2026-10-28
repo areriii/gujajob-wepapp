@@ -89,6 +89,15 @@
                         <label for="depreciationRate">อัตราค่าเสื่อม</label>
                         <input id="depreciationRate" type="text" readonly value="{{ $asset->category->depreciation_rate ?? '' }}" placeholder="-">
                     </div>
+                    <div class="form-field">
+                        <label for="replacementStatus">สถานะการซื้อทดแทน</label>
+                        <select id="replacementStatus" name="replacement_status">
+                            @foreach (\App\Http\Controllers\AssetController::REPLACEMENT_STATUS as $val => $label)
+                                <option value="{{ $val }}" @selected(old('replacement_status', $asset->replacement_status ?? 'no') === $val)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('replacement_status')<span class="field-error" style="color:#dc2626;font-size:11px;">{{ $message }}</span>@enderror
+                    </div>
                 </div>
 
                 <div class="form-row one-col">

@@ -7,7 +7,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.schemas import ForecastRequest
+from app.schemas import ForecastRequest, MaterialStockRequest
+from app.services.material_stock_forecast import run_stock_forecast
 from app.services.replacement_budget_forecast import run_forecast
 
 logging.basicConfig(level=logging.INFO)
@@ -70,3 +71,18 @@ def forecast_replacement_budget(payload: ForecastRequest):
         return JSONResponse(result, status_code=status_code)
 
     return result
+
+
+@app.post("/forecast/material-stock")
+def forecast_material_stock(payload: MaterialStockRequest):
+    """MAT-006 จำนวนเฉลี่ยในการเบิกต่อเดือน: next month's withdrawal per store and material."""
+    if any(value < 0 for item in payload.series for value in item.monthly):
+        return _error("INVALID_REQUEST", "ยอดเบิกรายเดือนต้องไม่ติดลบ", 422)
+    try:
+        return run_stock_forecast(
+            series=[item.model_dump() for item in payload.series],
+            targets=payload.targets,
+        )
+    except Exception:
+        logger.exception("Unexpected material stock forecast error")
+        return _error("MODEL_ERROR", "เกิดข้อผิดพลาดในการคำนวณจำนวนเฉลี่ยในการเบิกต่อเดือน", 500)

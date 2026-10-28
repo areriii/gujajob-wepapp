@@ -131,8 +131,8 @@
 
     <div class="confirm-overlay" id="receiveConfirmOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="receiveConfirmTitle">
-            <div class="confirm-icon success-confirm-icon">
-                <svg><use href="#icon-check-circle"></use></svg>
+            <div class="confirm-icon success-confirm-icon save-confirm-icon">
+                <svg><use href="#icon-success"></use></svg>
             </div>
 
             <h3 id="receiveConfirmTitle">ยืนยันการรับครุภัณฑ์</h3>

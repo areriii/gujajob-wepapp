@@ -722,6 +722,102 @@ textarea {
     border-color: #fed7aa;
 }
 
+/* ─── Recommendations from the organization's withdrawal history (create page) ─── */
+
+.withdraw-recommend {
+    margin: 16px 0 0;
+    padding: 12px 14px;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    background: #eff6ff;
+}
+
+.withdraw-recommend[hidden] {
+    display: none;
+}
+
+.withdraw-recommend-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    color: #173b8f;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.withdraw-recommend-title svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.withdraw-recommend-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.withdraw-recommend-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #dbeafe;
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.withdraw-recommend-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    min-width: 0;
+    font-size: 13px;
+}
+
+.withdraw-recommend-name {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+.withdraw-recommend-reason {
+    color: #475569;
+}
+
+.withdraw-recommend-stock {
+    color: #166534;
+    font-weight: 600;
+}
+
+.withdraw-recommend-stock.is-empty {
+    color: #9a3412;
+}
+
+.withdraw-recommend-btn {
+    flex-shrink: 0;
+    height: 32px;
+    padding: 0 16px;
+    border: 1px solid #173b8f;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #173b8f;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.withdraw-recommend-btn:hover {
+    background: #173b8f;
+    color: #ffffff;
+}
+
 .form-success-box {
     margin-bottom: 16px;
     padding: 10px 16px;

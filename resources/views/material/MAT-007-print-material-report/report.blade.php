@@ -29,7 +29,7 @@
                                 <td>{{ $material->mat_name }}</td>
                                 <td class="center-cell">{{ $material->unit }}</td>
                                 <td class="number-cell">{{ number_format((float) $material->unit_price, 2) }}</td>
-                                <td class="number-cell">{{ number_format((float) $material->balance, 2) }}</td>
+                                <td class="number-cell">{{ number_format((float) $material->balance) }}</td>
                             </tr>
                         @empty
                             <tr><td colspan="6" class="report-no-data">ไม่มีข้อมูลที่ตรงกับเงื่อนไข</td></tr>
@@ -39,11 +39,20 @@
             </div>
             <div class="report-actions report-register-actions">
                 <a href="{{ route('material.report.index') }}" class="back-btn"><span>ย้อนกลับ</span></a>
-                <button class="print-btn" type="button" onclick="window.print()">
+                <button
+                    class="print-btn"
+                    type="button"
+                    data-pdf-url="{{ route('material.report.stock.download', array_merge(request()->only(['org_id']), request()->boolean('pdf_test') ? ['pdf_test' => 1] : [])) }}"
+                    data-pdf-filename="material-balance-report.pdf"
+                >
                     <svg><use href="#icon-printer"></use></svg>
                     <span>พิมพ์</span>
                 </button>
             </div>
         </section>
     </div>
+@endsection
+
+@section('page-script')
+    @vite(['resources/js/material/MAT-007-print-material-report/report.js'])
 @endsection

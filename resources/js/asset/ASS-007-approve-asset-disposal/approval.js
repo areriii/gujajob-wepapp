@@ -70,7 +70,7 @@ if (approveForm) {
             }
         });
         if (!valid) {
-            showAlert('กรุณากรอกราคาขายของทุกรายการให้ถูกต้อง (ต้องไม่ติดลบ)');
+            showAlert('กรุณากรอกราคาขายขั้นต่ำของทุกรายการให้ถูกต้อง (ต้องไม่ติดลบ)');
         }
         return valid;
     }
@@ -102,8 +102,8 @@ if (approveForm) {
             messageEl.textContent = 'คุณแน่ใจหรือไม่ว่าต้องการไม่อนุมัติใบแจ้งจำหน่ายนี้';
             confirmBtn.className = 'modal-confirm-btn delete-confirm-btn';
         } else {
-            iconWrapper.className = 'confirm-icon success-confirm-icon';
-            iconUse.setAttribute('href', '#icon-square-pen');
+            iconWrapper.className = 'confirm-icon success-confirm-icon save-confirm-icon';
+            iconUse.setAttribute('href', '#icon-success');
             titleEl.textContent = 'ยืนยันการบันทึก';
             messageEl.textContent = 'คุณแน่ใจหรือไม่ว่าต้องการบันทึกผลการอนุมัตินี้';
             confirmBtn.className = 'modal-confirm-btn success-confirm-btn';

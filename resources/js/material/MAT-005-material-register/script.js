@@ -1,3 +1,5 @@
+import { initSearchableSelects } from '../../components/searchable-select.js';
+
 const sidebarStorageKey = 'gujajob.sidebar.groupState';
 
 function getSidebarState() {
@@ -83,7 +85,6 @@ function initializeMaterialRegister() {
     const searchInput = document.getElementById('searchInput');
     const departmentName = document.getElementById('departmentName');
     const searchButton = document.getElementById('searchRegisterButton');
-    const printButton = document.getElementById('printRegisterButton');
 
     const materialTitle = document.getElementById('materialTitle');
     const summaryForward = document.getElementById('summaryForward');
@@ -200,18 +201,80 @@ function initializeMaterialRegister() {
         }
     });
 
-    if (printButton) {
-        printButton.addEventListener('click', () => {
-            alert('เตรียมไว้สำหรับพิมพ์คุมทะเบียนวัสดุเป็น PDF');
-        });
-    }
-
     updatePlaceholder();
+}
+
+// "พิมพ์คุมทะเบียนวัสดุ (PDF)" downloads the server-made PDF, as the print button of the MAT-007 report does.
+function initializeRegisterPrint() {
+    const printBtn = document.getElementById('printRegisterButton');
+    if (!printBtn) return;
+
+    let isGeneratingPdf = false;
+
+    const openPdfPreview = (objectUrl) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.65)';
+        overlay.innerHTML = `
+            <div style="position:relative;width:min(960px,100%);height:min(90vh,760px);background:#fff">
+                <button type="button" style="position:absolute;right:8px;top:8px;z-index:1;padding:5px 10px;border:0;background:#111827;color:#fff;cursor:pointer">ปิด</button>
+                <iframe style="width:100%;height:100%;border:0" src="${objectUrl}" title="PDF preview"></iframe>
+            </div>
+        `;
+
+        const close = () => {
+            overlay.remove();
+            URL.revokeObjectURL(objectUrl);
+        };
+
+        overlay.querySelector('button').addEventListener('click', close);
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) close();
+        });
+        document.body.appendChild(overlay);
+    };
+
+    printBtn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        if (isGeneratingPdf) return;
+
+        const pdfUrl = printBtn.dataset.pdfUrl;
+        if (!pdfUrl) return;
+
+        isGeneratingPdf = true;
+        printBtn.disabled = true;
+        try {
+            const response = await fetch(pdfUrl);
+            if (!response.ok) throw new Error(`PDF request failed with status ${response.status}`);
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const isTestPreview = new URL(pdfUrl, window.location.href).searchParams.get('pdf_test') === '1'
+                || (response.headers.get('content-disposition') || '').includes('inline');
+
+            if (isTestPreview) {
+                openPdfPreview(objectUrl);
+            } else {
+                const link = document.createElement('a');
+                link.href = objectUrl;
+                link.download = printBtn.dataset.pdfFilename || 'material-register.pdf';
+                link.click();
+                URL.revokeObjectURL(objectUrl);
+            }
+        } catch (error) {
+            console.error('Failed to generate the material register PDF:', error);
+            alert('ไม่สามารถสร้างไฟล์รายงานได้ กรุณาลองใหม่อีกครั้ง');
+        } finally {
+            isGeneratingPdf = false;
+            printBtn.disabled = false;
+        }
+    });
 }
 
 initializeSidebarGroups();
 preventDisabledMenuReload();
+initSearchableSelects();
 initializeMaterialRegister();
+initializeRegisterPrint();
 
 
 /* ===== Global save validation for create/edit pages ===== */

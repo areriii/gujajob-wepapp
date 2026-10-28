@@ -3,6 +3,7 @@
 @section('page-style')
     @vite([
         'resources/css/components/pagination.css',
+        'resources/css/components/searchable-select.css',
         'resources/css/components/sort-icon.css',
         'resources/css/material/MAT-005-material-register/style.css',
     ])
@@ -17,12 +18,14 @@
                 <div class="filter-grid">
                     <div class="field-group">
                         <label for="orgId">หน่วยงาน</label>
-                        <select id="orgId" name="org_id">
-                            <option value="0">-- ทุกหน่วยงาน --</option>
-                            @foreach ($organizations as $org)
-                                <option value="{{ $org->org_id }}" @selected($orgId == $org->org_id)>{{ $org->org_name }}</option>
-                            @endforeach
-                        </select>
+                        {{-- Organizations the user may see; '__all__' is not numeric, so the controller reads it as every organization --}}
+                        <x-searchable-select
+                            name="org_id"
+                            id="orgId"
+                            placeholder="ทุกหน่วยงาน"
+                            :options="collect([['value' => '__all__', 'label' => 'ทุกหน่วยงาน']])->merge($organizations->map(fn ($org) => ['value' => $org->org_id, 'label' => $org->org_name]))"
+                            :selected="$orgId ?? '__all__'"
+                        />
                     </div>
 
                     <div class="field-group">
@@ -198,7 +201,17 @@
                         <span>{{ $material->mat_code }} : {{ $material->mat_name }}</span>
                     </div>
 
-                    <button class="print-btn" type="button" id="printRegisterButton">
+                    <button
+                        class="print-btn"
+                        type="button"
+                        id="printRegisterButton"
+                        {{-- Same material and filters as on screen, every transaction row --}}
+                        data-pdf-url="{{ route('material.register.download', array_merge(
+                            ['material_id' => $material->id, 'org_id' => $orgId, 'fiscal_year' => $fiscalYear, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'sort' => $sort, 'direction' => $direction],
+                            request()->boolean('pdf_test') ? ['pdf_test' => 1] : []
+                        )) }}"
+                        data-pdf-filename="material-register-{{ $material->mat_code }}.pdf"
+                    >
                         <svg class="print-icon"><use href="#icon-printer"></use></svg>
                         <span>พิมพ์คุมทะเบียนวัสดุ (PDF)</span>
                     </button>

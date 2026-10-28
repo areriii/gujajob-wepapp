@@ -602,6 +602,7 @@ Route::get('/material/MAT-003-withdraw-material', [MaterialWithdrawController::c
 Route::get('/material/MAT-003-withdraw-material/create', [MaterialWithdrawController::class, 'create'])->name('material.withdraw.create');
 Route::post('/material/MAT-003-withdraw-material', [MaterialWithdrawController::class, 'store'])->name('material.withdraw.store');
 Route::get('/material/MAT-003-withdraw-material/stock-check', [MaterialWithdrawController::class, 'stockCheck'])->name('material.withdraw.stock-check');
+Route::get('/material/MAT-003-withdraw-material/recommendations', [MaterialWithdrawController::class, 'recommendations'])->name('material.withdraw.recommendations');
 
 // ─── Approval sub-routes — must be declared before {code} wildcard routes ───
 Route::get('/material/MAT-003-withdraw-material/approvals', [MaterialWithdrawApprovalController::class, 'index'])->name('material.withdraw.approval.index');
@@ -634,6 +635,7 @@ Route::post('/material/MAT-003-withdraw-material/{code}/finalize', [MaterialWith
 
 
 Route::get('/material/MAT-005-material-register', [MaterialRegisterController::class, 'index'])->name('material.register.index');
+Route::get('/material/MAT-005-material-register/download', [MaterialRegisterController::class, 'downloadPdf'])->name('material.register.download');
 
 
 
@@ -675,6 +677,8 @@ if (! function_exists('gujajob_material_balance_lot_records')) {
 
 Route::get('/material/MAT-006-record-balance-setting', [MaterialBalanceSettingController::class, 'index'])->name('material.balance.index');
 
+Route::get('/material/MAT-006-record-balance-setting/download', [MaterialBalanceSettingController::class, 'downloadPdf'])->name('material.balance.download');
+
 Route::post('/material/MAT-006-record-balance-setting/bulk-update', [MaterialBalanceSettingController::class, 'bulkUpdate'])->name('material.balance.bulk-update');
 
 Route::post('/material/MAT-006-record-balance-setting/{materialCode}/balance', [MaterialBalanceSettingController::class, 'updateBalance'])->name('material.balance.update');
@@ -685,8 +689,8 @@ Route::get('/material/MAT-006-record-balance-setting/{materialCode}/edit', [Mate
 
 Route::get('/material/MAT-007-print-material-report', [MaterialReportController::class, 'form'])->name('material.report.index');
 Route::get('/material/MAT-007-print-material-report/organizations/search', [MaterialReportController::class, 'searchOrganizations'])->name('material.report.organizations.search');
-Route::get('/material/MAT-007-print-material-report/sub-organizations/search', [MaterialReportController::class, 'searchSubOrganizations'])->name('material.report.sub-organizations.search');
 Route::get('/material/MAT-007-print-material-report/report-stock', [MaterialReportController::class, 'index'])->name('material.report.stock');
+Route::get('/material/MAT-007-print-material-report/report-stock/download', [MaterialReportController::class, 'downloadPdf'])->name('material.report.stock.download');
 Route::get('/material/MAT-007-print-material-report/report-stock/export', [MaterialReportController::class, 'export'])->name('material.report.stock.export');
 
 
@@ -719,9 +723,12 @@ Route::get('/api/tambons', [DealerController::class, 'tambonsByAmphur'])->name('
 Route::get('/asset/ASS-003-manage-asset-registration', [AssetController::class, 'index'])->name('asset.registrations.index');
 Route::get('/asset/ASS-003-manage-asset-registration/create', [AssetController::class, 'create'])->name('asset.registrations.create');
 Route::get('/asset/ASS-003-manage-asset-registration/forecast-data', [AssetController::class, 'forecastData'])->name('asset.registrations.forecast');
-Route::post('/asset/ASS-003-manage-asset-registration/ai-forecast', [AssetController::class, 'aiForecastBudget'])->name('asset.registrations.ai-forecast');
+Route::post('/asset/ASS-003-manage-asset-registration/replacement-forecast/calculate', [AssetController::class, 'calculateForecastBudget'])->name('asset.registrations.forecast-calculate');
 Route::get('/asset/ASS-003-manage-asset-registration/forecast-print', [AssetController::class, 'forecastPrint'])->name('asset.registrations.forecast-print');
 Route::get('/asset/ASS-003-manage-asset-registration/replacement-forecast', [AssetController::class, 'forecastPage'])->name('asset.registrations.replacement-forecast');
+Route::get('/asset/ASS-003-manage-asset-registration/replacement-forecast/assets', [AssetController::class, 'forecastAssets'])->name('asset.registrations.forecast-assets');
+Route::get('/asset/ASS-003-manage-asset-registration/replacement-forecast/assets/pdf', [AssetController::class, 'forecastAssetsPdf'])->name('asset.registrations.forecast-assets.pdf');
+Route::get('/asset/ASS-003-manage-asset-registration/replacement-forecast/assets/excel', [AssetController::class, 'forecastAssetsExcel'])->name('asset.registrations.forecast-assets.excel');
 Route::post('/asset/ASS-003-manage-asset-registration', [AssetController::class, 'store'])->name('asset.registrations.store');
 Route::get('/asset/ASS-003-manage-asset-registration/{id}', [AssetController::class, 'show'])->name('asset.registrations.show');
 Route::get('/asset/ASS-003-manage-asset-registration/{id}/edit', [AssetController::class, 'edit'])->name('asset.registrations.edit');

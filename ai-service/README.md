@@ -107,6 +107,8 @@ AI_FORECAST_DEMO=false
 
 ### `POST /forecast/replacement-budget`
 
+> หน้า ASS-003 พยากรณ์งบประมาณทดแทนเลิกเรียก endpoint นี้แล้ว: งบประมาณคำนวณใน Laravel (`App\Services\ReplacementBudgetCalculator`) = มูลค่าตอนซื้อ + % ที่ผู้ใช้กรอก (บวกครั้งเดียว) endpoint นี้ยังคงไว้เผื่อใช้ภายหลัง
+
 **Request**
 ```json
 {
@@ -167,6 +169,22 @@ AI_FORECAST_DEMO=false
 
 Laravel (`App\Services\ReplacementBudgetForecastService`) แปลงผลเป็นข้อความสำหรับผู้ใช้อีกชั้น
 และเพิ่มกรณี `AI_SERVICE_UNAVAILABLE` (503), `AI_SERVICE_TIMEOUT` (504), `AI_SERVICE_ERROR` (502), `DATABASE_UNAVAILABLE` (503)
+
+### `POST /forecast/material-stock`
+
+จำนวนเฉลี่ยในการเบิกต่อเดือนของ MAT-006 (`app/services/material_stock_forecast.py`) — พยากรณ์ยอดเบิกเดือนถัดไปของแต่ละคลัง (หน่วยงาน) และวัสดุ
+
+```json
+{
+  "series":  [{ "key": "1310:89", "monthly": [2, 0, 0, 0] }],
+  "targets": ["1310:89"]
+}
+```
+
+- Laravel (`App\Services\MaterialStockRecommendationService`) ส่งยอดเบิกที่รับโอนแล้วรายเดือนปฏิทินของทุกคลัง/วัสดุ ตั้งแต่เดือนแรกที่มีประวัติจนถึงเดือนปัจจุบัน (ไม่เกิน 36 เดือน) ใช้ฝึกทั้งหมด แต่ตอบเฉพาะ `targets`
+- โมเดล: Ridge Regression (numpy) จากค่าเฉลี่ย 12 เดือน, ค่าเฉลี่ย 3 เดือน, เดือนล่าสุด และแนวโน้ม 12 เดือน → ยอดแนะนำ = ค่าพยากรณ์ปัดขึ้น
+- ค่าเฉลี่ย = ยอดเบิกรวมหารจำนวนเดือนที่มีประวัติ ไม่เกิน 12 เดือนล่าสุด (ประวัติเริ่มกรกฎาคม → ตุลาคมหาร 4, ครบปีแล้วหาร 12 คงที่) ใช้แทนโมเดล (`method: moving_average_12m`) เมื่อประวัติไม่ถึง 13 เดือนหรือเดือนที่มีการเบิกน้อยกว่า 12 (`reason: INSUFFICIENT_HISTORY`) หรือโมเดลไม่ดีกว่าค่าเฉลี่ยใน 6 เดือนล่าสุด (`MODEL_NOT_BETTER`)
+- ถ้าเรียก service ไม่ได้ Laravel คิดค่าเฉลี่ยแบบเดียวกันเอง หน้าเว็บจึงไม่เสีย
 
 ---
 

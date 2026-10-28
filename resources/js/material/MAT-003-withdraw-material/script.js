@@ -320,7 +320,9 @@ function initializeWithdrawCreatePage() {
 
     async function fetchStock(matId) {
         try {
-            const res = await fetch(`/material/MAT-003-withdraw-material/stock-check?material_id=${encodeURIComponent(matId)}`);
+            // The withdrawal type decides whose store is checked: the parent organization or our own.
+            const mode = document.getElementById('withdrawTypeHidden')?.value ?? '';
+            const res = await fetch(`/material/MAT-003-withdraw-material/stock-check?material_id=${encodeURIComponent(matId)}&withdraw_mode=${encodeURIComponent(mode)}`);
             if (!res.ok) return null;
             const data = await res.json();
             return data.available; // number or null
@@ -373,6 +375,91 @@ function initializeWithdrawCreatePage() {
         tableBody.querySelectorAll('tr').forEach((row, index) => {
             row.children[0].textContent = index + 1;
         });
+    }
+
+    // ── Recommendations: materials this organization usually withdraws with the listed ones ──
+    const recommendBox  = document.getElementById('withdrawRecommendations');
+    const recommendList = document.getElementById('withdrawRecommendationList');
+    let recommendRequestToken = 0; // discards stale responses when the list changes mid-flight
+
+    function hideRecommendations() {
+        if (!recommendBox || !recommendList) return;
+        recommendBox.hidden = true;
+        recommendList.replaceChildren();
+    }
+
+    function renderRecommendations(items) {
+        if (!recommendBox || !recommendList) return;
+        if (items.length === 0) {
+            hideRecommendations();
+            return;
+        }
+
+        recommendList.replaceChildren(...items.map((item) => {
+            const card = document.createElement('div');
+            card.className = 'withdraw-recommend-item';
+
+            const info = document.createElement('div');
+            info.className = 'withdraw-recommend-info';
+
+            const code = document.createElement('span');
+            code.className = 'material-code';
+            code.textContent = item.code;
+
+            const name = document.createElement('span');
+            name.className = 'withdraw-recommend-name';
+            name.textContent = item.name;
+
+            const reason = document.createElement('span');
+            reason.className = 'withdraw-recommend-reason';
+            reason.textContent = `เบิกคู่กับ${item.base_name} · ${item.together} จาก ${item.base_count} ครั้ง (${Math.round(item.confidence * 100)}%)`;
+
+            const stock = document.createElement('span');
+            stock.className = item.available > 0 ? 'withdraw-recommend-stock' : 'withdraw-recommend-stock is-empty';
+            stock.textContent = `คงเหลือ ${item.available} ${item.unit}`;
+
+            info.append(code, name, reason, stock);
+
+            const pick = document.createElement('button');
+            pick.className = 'withdraw-recommend-btn';
+            pick.type = 'button';
+            pick.textContent = 'เลือก';
+            pick.addEventListener('click', async () => {
+                const material = { id: item.mat_id, code: item.code, name: item.name, unit: item.unit };
+                if (materialSearchInput) materialSearchInput.value = '';
+                fillMaterialForm(material);
+                await fetchAndShowStock(material);
+                withdrawQty.focus();
+            });
+
+            card.append(info, pick);
+            return card;
+        }));
+        recommendBox.hidden = false;
+    }
+
+    async function refreshRecommendations() {
+        if (!recommendBox || !recommendList) return;
+
+        const token  = ++recommendRequestToken;
+        const matIds = Array.from(tableBody.querySelectorAll('tr[data-mat-id]')).map((row) => row.dataset.matId);
+        if (matIds.length === 0) {
+            hideRecommendations();
+            return;
+        }
+
+        try {
+            const mode = document.getElementById('withdrawTypeHidden')?.value ?? '';
+            const res  = await fetch(`${recommendBox.dataset.url}?mat_ids=${encodeURIComponent(matIds.join(','))}&withdraw_mode=${encodeURIComponent(mode)}`, {
+                headers: { Accept: 'application/json' },
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const payload = await res.json();
+            if (token !== recommendRequestToken) return;
+            renderRecommendations(Array.isArray(payload.data) ? payload.data : []);
+        } catch {
+            if (token === recommendRequestToken) hideRecommendations();
+        }
     }
 
     function buildActionButtons() {
@@ -528,6 +615,7 @@ function initializeWithdrawCreatePage() {
             materialUnit.value = '';
             if (materialSearchInput) materialSearchInput.value = '';
             hideStockInfo();
+            refreshRecommendations();
         });
     }
 
@@ -541,6 +629,7 @@ function initializeWithdrawCreatePage() {
             if (deleteBtn) {
                 row.remove();
                 reorderRows();
+                refreshRecommendations();
                 return;
             }
 
@@ -667,6 +756,7 @@ function initializeWithdrawCreatePage() {
             }
         });
         reorderRows();
+        refreshRecommendations();
     }
 
     updateSearchPlaceholder();

@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MaterialWithdrawn;
 use App\Models\MaterialWithdrawnList;
-use App\Services\MaterialBalanceService;
+use App\Services\MaterialInventoryService;
 use App\Services\OrganizationVisibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -18,7 +18,7 @@ use Throwable;
 class MaterialWithdrawApprovalController extends Controller
 {
     public function __construct(
-        private readonly MaterialBalanceService $balanceService,
+        private readonly MaterialInventoryService $inventory,
         private readonly OrganizationVisibilityService $orgVisibility,
     ) {}
 
@@ -103,7 +103,7 @@ class MaterialWithdrawApprovalController extends Controller
             ->values()
             ->all();
 
-        $balances = empty($matIds) ? [] : $this->balanceService->getBalances($matIds);
+        $balances = empty($matIds) ? [] : $this->sourceAvailable($record, $matIds);
 
         // Fill 0 for materials with no transaction history (no procurement yet)
         foreach ($matIds as $matId) {
@@ -122,8 +122,8 @@ class MaterialWithdrawApprovalController extends Controller
 
     // =========================================================
     //  2b. Edit – allowed only when status = STATUS_APPROVED
-    //  Stock was already deducted at approve(); editing qty here
-    //  is restricted to non-qty fields to avoid double-deduction.
+    //  Stock moves only when the transfer is received (MAT-004); editing qty
+    //  here is restricted to non-qty fields.
     // =========================================================
 
     public function edit(string $code): View|RedirectResponse
@@ -146,7 +146,7 @@ class MaterialWithdrawApprovalController extends Controller
     }
 
     // =========================================================
-    //  3. Approve – update wd_amount + deduct inventory
+    //  3. Approve – update wd_amount; stock moves on receipt in MAT-004
     // =========================================================
 
     public function approve(Request $request, string $code): RedirectResponse
@@ -199,8 +199,6 @@ class MaterialWithdrawApprovalController extends Controller
                     throw new \RuntimeException('รายการนี้ได้รับการดำเนินการแล้ว');
                 }
 
-                $orgId = $record->org_id ? (int) $record->org_id : null;
-
                 // ─── Load details belonging to this header only ───────────────
                 $existingDetails = MaterialWithdrawnList::query()
                     ->with('material')
@@ -211,6 +209,8 @@ class MaterialWithdrawApprovalController extends Controller
                     ->pluck('id')
                     ->map(fn ($id) => (int) $id)
                     ->all();
+
+                $available = $this->sourceAvailable($record, $existingDetails->pluck('mat_id')->map(fn ($id) => (int) $id)->all());
 
                 foreach ($details as $rawDetailId => $data) {
                     $detailId    = (int) $rawDetailId;
@@ -228,32 +228,13 @@ class MaterialWithdrawApprovalController extends Controller
                     $detail = $existingDetails->first(fn ($d) => (int) $d->id === $detailId);
                     $matId  = (int) $detail->mat_id;
 
-                    // ─── Lock inventory row and re-check balance ──────────────
-                    if ($orgId !== null && $approvedQty > 0) {
-                        $inv = MaterialInventory::query()
-                            ->where('mat_id', $matId)
-                            ->where('org_id', $orgId)
-                            ->lockForUpdate()
-                            ->first();
-
-                        if ($inv !== null) {
-                            $currentBalance = (int) $inv->inv_amt;
-
-                            if ($approvedQty > $currentBalance) {
-                                $matCode = $detail->material?->mat_code ?? "(id:{$matId})";
-                                throw new \RuntimeException(
-                                    "ไม่สามารถอนุมัติรายการได้ " .
-                                    "เนื่องจากจำนวนคงเหลือมีการเปลี่ยนแปลง " .
-                                    "กรุณาตรวจสอบอีกครั้ง"
-                                );
-                            }
-
-                            // Deduct stock
-                            $inv->update([
-                                'inv_amt'    => $currentBalance - $approvedQty,
-                                'updated_by' => 1,
-                            ]);
-                        }
+                    // ─── Check the source store; stock moves only when the transfer is received (MAT-004) ─
+                    if ($approvedQty > 0 && $approvedQty > ($available[$matId] ?? 0)) {
+                        throw new \RuntimeException(
+                            "ไม่สามารถอนุมัติรายการได้ " .
+                            "เนื่องจากจำนวนคงเหลือในคลังของหน่วยงานต้นทางไม่เพียงพอ " .
+                            "(คงเหลือ: " . number_format($available[$matId] ?? 0) . ") กรุณาตรวจสอบอีกครั้ง"
+                        );
                     }
 
                     // ─── Update approved quantity (overwrites wd_amount) ──────
@@ -327,7 +308,7 @@ class MaterialWithdrawApprovalController extends Controller
 
             $balances = empty($matIds)
                 ? []
-                : $this->balanceService->getBalances($matIds);
+                : $this->sourceAvailable($header, $matIds);
 
             $details = $request->input('details', []);
 
@@ -426,6 +407,19 @@ class MaterialWithdrawApprovalController extends Controller
     // =========================================================
     //  Private helpers
     // =========================================================
+
+    /**
+     * Stock still available in the store this withdrawal draws on (the requester's parent for LARGE_LOT, the
+     * requester for INTERNAL_USE), not counting this withdrawal's own reservation.
+     *
+     * @return array<int, float>
+     */
+    private function sourceAvailable(MaterialWithdrawn $record, array $matIds): array
+    {
+        $sourceOrgId = $this->inventory->sourceOrgId($record->org_id !== null ? (int) $record->org_id : null, $record->withdraw_type ?? 'LARGE_LOT');
+
+        return $sourceOrgId !== null ? $this->inventory->available($sourceOrgId, $matIds, (int) $record->id) : array_fill_keys($matIds, 0.0);
+    }
 
     private function findByCode(string $code): MaterialWithdrawn
     {

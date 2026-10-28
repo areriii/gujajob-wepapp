@@ -40,6 +40,10 @@
     flex: 0 0 280px;
 }
 
+.forecast-page .forecast-percent-field {
+    flex: 0 0 160px;
+}
+
 /* style.css pads every .field-group input 0 11px; keep room for the dropdown arrow. */
 .forecast-page .field-group .guja-autocomplete__input {
     padding-right: 32px;
@@ -193,6 +197,69 @@
 
 .forecast-page .year-ce {
     font-size: 11px;
+}
+
+/* Years and "แสดงทั้งหมด" open the forecast asset list (forecast-assets.blade.php) */
+.forecast-page .forecast-year-link {
+    color: var(--primary);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.forecast-page .forecast-year-link:hover {
+    text-decoration: underline;
+}
+
+.forecast-page .forecast-all-row td {
+    background: #f8fafc;
+}
+
+/* Print (PDF) and Excel icons at the top right of the asset list frame */
+.forecast-page .forecast-export-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+    display: flex;
+    gap: 12px;
+}
+
+.forecast-page .forecast-export-btn {
+    width: 50px;
+    height: 50px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid currentColor;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.forecast-page .forecast-export-btn svg {
+    width: 28px;
+    height: 28px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.forecast-page .forecast-export-btn--print {
+    color: var(--primary);
+    background: #dbeafe;
+}
+
+.forecast-page .forecast-export-btn--print:hover {
+    background: #bfdbfe;
+}
+
+.forecast-page .forecast-export-btn--excel {
+    color: #16a34a;
+    background: #dcfce7;
+}
+
+.forecast-page .forecast-export-btn--excel:hover {
+    background: #bbf7d0;
 }
 
 .forecast-page .forecast-section-title {

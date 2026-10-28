@@ -18,8 +18,8 @@
     <div
         class="page-container forecast-page"
         id="forecastPage"
-        data-forecast-url="{{ route('asset.registrations.ai-forecast', absolute: false) }}"
-        data-print-url="{{ route('asset.registrations.forecast-print', absolute: false) }}"
+        data-forecast-url="{{ route('asset.registrations.forecast-calculate', absolute: false) }}"
+        data-assets-url="{{ route('asset.registrations.forecast-assets', absolute: false) }}"
     >
         <x-page-header :title="$pageTitle" />
 
@@ -33,9 +33,9 @@
                 <div class="field-group forecast-years-field">
                     <label for="forecastYears">พยากรณ์ล่วงหน้า</label>
                     <select id="forecastYears">
-                        <option value="1" selected>1 ปี</option>
-                        <option value="2">2 ปี</option>
-                        <option value="3">3 ปี</option>
+                        @foreach ([1, 2, 3] as $years)
+                            <option value="{{ $years }}" @selected($forecastInputs['years'] === $years)>{{ $years }} ปี</option>
+                        @endforeach
                     </select>
                 </div>
 
@@ -46,7 +46,7 @@
                         id="forecastCatGroup"
                         placeholder="ทั้งหมด"
                         :options="array_merge([$allOption], $forecastCategories)"
-                        selected=""
+                        :selected="$forecastInputs['cat_group']"
                     />
                 </div>
 
@@ -57,16 +57,20 @@
                         id="forecastOrgId"
                         placeholder="ทั้งหมด"
                         :options="array_merge([$allOption], $forecastOrgs)"
-                        selected=""
+                        :selected="$forecastInputs['org_id']"
                     />
                 </div>
 
+                <div class="field-group forecast-percent-field">
+                    <label for="forecastPercent">เพิ่มจากมูลค่าตอนซื้อ (%)</label>
+                    <input id="forecastPercent" type="number" min="0" max="1000" step="0.01" value="{{ $forecastInputs['percent'] }}" inputmode="decimal">
+                </div>
+
                 <button class="create-btn" type="button" id="forecastCalcBtn">คำนวณ</button>
-                <button class="search-btn" type="button" id="forecastPrintBtn" disabled>จัดพิมพ์รายงาน</button>
             </div>
 
             <p class="forecast-rule-note">
-                ปีที่ครบกำหนดทดแทน = ปีที่ค่าเสื่อมราคาครบอายุการใช้งานตามทะเบียน (เริ่มคิดเดือนที่ตรวจรับ ถ้าหลังวันที่ 15 เริ่มเดือนถัดไป คงเหลือ 1 บาท) · AI ใช้พยากรณ์ราคาจัดซื้อทดแทนของครุภัณฑ์ที่ครบกำหนดเท่านั้น
+                ปีที่ครบกำหนดทดแทน = ปีที่ค่าเสื่อมราคาครบอายุการใช้งานตามทะเบียน (เริ่มคิดเดือนที่ตรวจรับ ถ้าหลังวันที่ 15 เริ่มเดือนถัดไป คงเหลือ 1 บาท) · งบประมาณทดแทน = มูลค่าตอนซื้อ + % ที่กรอก (บวกครั้งเดียว)
             </p>
         </section>
 
@@ -80,12 +84,17 @@
                 <div id="forecastResult" aria-live="polite">
                     <p class="forecast-placeholder-msg">เลือกเงื่อนไข แล้วกด "คำนวณ" เพื่อแสดงผลการพยากรณ์</p>
                 </div>
+
+                @if ($restoredForecast)
+                    {{-- The last calculation, shown again by forecast.js when coming back from the asset list. --}}
+                    <script type="application/json" id="forecastRestored">@json($restoredForecast)</script>
+                @endif
+
+                <div class="form-actions forecast-frame-actions">
+                    <a class="cancel-btn" href="{{ route('asset.registrations.index') }}">ย้อนกลับ</a>
+                </div>
             </div>
         </section>
-
-        <div class="form-actions">
-            <a class="cancel-btn" href="{{ route('asset.registrations.index') }}">ย้อนกลับ</a>
-        </div>
     </div>
 @endsection
 

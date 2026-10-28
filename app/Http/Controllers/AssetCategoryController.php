@@ -130,8 +130,7 @@ class AssetCategoryController extends Controller
             return back()->withInput()->withErrors(['general' => 'บันทึกข้อมูลไม่สำเร็จ: ' . $e->getMessage()]);
         }
 
-        return redirect()->route('asset.categories.index')
-            ->with('asset_category_success', 'บันทึกข้อมูลประเภทครุภัณฑ์เรียบร้อยแล้ว');
+        return redirect()->route('asset.categories.index');
     }
 
     public function show(int $id): View
@@ -194,8 +193,7 @@ class AssetCategoryController extends Controller
             return back()->withInput()->withErrors(['general' => 'แก้ไขข้อมูลไม่สำเร็จ: ' . $e->getMessage()]);
         }
 
-        return redirect()->route('asset.categories.index')
-            ->with('asset_category_success', 'แก้ไขข้อมูลประเภทครุภัณฑ์เรียบร้อยแล้ว');
+        return redirect()->route('asset.categories.index');
     }
 
     public function destroy(int $id): RedirectResponse
@@ -221,8 +219,7 @@ class AssetCategoryController extends Controller
                 ->with('asset_category_error', 'ลบข้อมูลไม่สำเร็จ: ' . $e->getMessage());
         }
 
-        return redirect()->route('asset.categories.index')
-            ->with('asset_category_success', 'ลบข้อมูลประเภทครุภัณฑ์เรียบร้อยแล้ว');
+        return redirect()->route('asset.categories.index');
     }
 
     private function escapeLike(string $value): string

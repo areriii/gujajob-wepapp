@@ -6,7 +6,7 @@ use App\Models\MaterialInspection;
 use App\Models\MaterialInspectionList;
 use App\Models\MaterialProcurementList;
 use App\Models\MaterialWithdrawn;
-use App\Services\MaterialBalanceService;
+use App\Services\MaterialInventoryService;
 use App\Services\OrganizationVisibilityService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,7 +20,10 @@ use Throwable;
 
 class MaterialTransferReceiveController extends Controller
 {
-    public function __construct(private readonly OrganizationVisibilityService $orgVisibility) {}
+    public function __construct(
+        private readonly OrganizationVisibilityService $orgVisibility,
+        private readonly MaterialInventoryService $inventory,
+    ) {}
     // =========================================================
     //  1. Index
     // =========================================================
@@ -114,8 +117,14 @@ class MaterialTransferReceiveController extends Controller
 
         $detailItems  = $isConfirmed ? $inspection->details : $withdrawal->details;
         $matIds       = $detailItems->pluck('mat_id')->map(fn ($id) => (int) $id)->all();
-        $excludeInspId = ($isConfirmed && $inspection) ? (int) $inspection->id : null;
-        $inventoryMap  = (new MaterialBalanceService())->getBalances($matIds, $excludeInspId);
+        $inventoryMap  = $this->requesterStock($withdrawal, $matIds);
+        if ($isConfirmed) {
+            // Stock before this transfer: it was added to (LARGE_LOT) or taken from (INTERNAL_USE) the requester on receipt.
+            $sign = $withdrawal->withdraw_type === 'INTERNAL_USE' ? 1 : -1;
+            foreach ($inspection->details as $line) {
+                $inventoryMap[(int) $line->mat_id] = ($inventoryMap[(int) $line->mat_id] ?? 0) + $sign * (float) $line->isp_amount;
+            }
+        }
         $stockHistory  = $this->buildStockHistory($matIds);
 
         $defaultPerson = $inspection?->mat_insp_person ?? old('mat_insp_person', Auth::user()->user_name ?? '');
@@ -157,7 +166,7 @@ class MaterialTransferReceiveController extends Controller
 
         $detailItems  = $withdrawal->details;
         $matIds       = $detailItems->pluck('mat_id')->map(fn ($id) => (int) $id)->all();
-        $inventoryMap = (new MaterialBalanceService())->getBalances($matIds);
+        $inventoryMap = $this->requesterStock($withdrawal, $matIds);
         $stockHistory = $this->buildStockHistory($matIds);
 
         return view('material.MAT-004-receive-material-transfer.edit', [
@@ -296,13 +305,14 @@ class MaterialTransferReceiveController extends Controller
                 }
 
                 // 7. Create MATERIAL_INSPECTION_LIST rows
+                $receivedLines = [];
                 foreach ($wdDetails as $detail) {
                     $ispAmt = (int) $detail->wd_amount;
                     if ($ispAmt <= 0) {
                         continue;
                     }
 
-                    MaterialInspectionList::create([
+                    $receivedLines[] = MaterialInspectionList::create([
                         'id'         => $this->nextInspectionListId(),
                         'mat_isp_id' => $inspection->id,
                         'mat_id'     => (int) $detail->mat_id,
@@ -311,6 +321,9 @@ class MaterialTransferReceiveController extends Controller
                         'updated_by' => $userId,
                     ]);
                 }
+
+                // 8. The withdrawal is complete only now: move the received stock (MATERIAL_INVENTORY)
+                $this->inventory->applyReceivedWithdrawal($withdrawal, $receivedLines, $userId);
             });
 
             return redirect()
@@ -354,6 +367,12 @@ class MaterialTransferReceiveController extends Controller
     // =========================================================
     //  Private helpers
     // =========================================================
+
+    /** The requesting organization's stock on hand (MATERIAL_INVENTORY). @return array<int, float> */
+    private function requesterStock(MaterialWithdrawn $withdrawal, array $matIds): array
+    {
+        return $withdrawal->org_id !== null ? $this->inventory->onHand((int) $withdrawal->org_id, $matIds) : [];
+    }
 
     private function findWithdrawalByCode(string $wdCode): MaterialWithdrawn
     {

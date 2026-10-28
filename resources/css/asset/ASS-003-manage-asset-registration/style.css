@@ -1215,11 +1215,7 @@ svg.svg-sprite {
     font-weight: 900;
 }
 
-.ai-summary-item.highlight {
-    border-color: var(--primary);
-    background: #eff6ff;
-}
-
+/* งบประมาณรวม keeps the same box as the other summary items; only its amount stands out. */
 .ai-summary-item.highlight strong {
     color: var(--primary);
     font-size: 18px;

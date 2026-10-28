@@ -46,3 +46,17 @@ class ForecastRequest(BaseModel):
     base_year: int = Field(..., ge=1900, le=3000)
     training_records: list[TrainingRecord]
     candidate_assets: list[CandidateAsset]
+
+
+class MaterialStockSeries(BaseModel):
+    """Monthly withdrawals from one store (organization) of one material, oldest -> newest."""
+
+    key: str = Field(..., min_length=1, max_length=64)  # "org_id:mat_id"
+    # One value per calendar month since history began (newest = current month); shorter than 12 early on.
+    monthly: list[float] = Field(..., min_length=1, max_length=120)
+
+
+class MaterialStockRequest(BaseModel):
+    series: list[MaterialStockSeries]
+    # Keys to recommend for (the materials on the MAT-006 page); every series is used for training.
+    targets: list[str]

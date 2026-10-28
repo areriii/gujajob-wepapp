@@ -89,7 +89,7 @@
                                         <th>รหัสครุภัณฑ์</th>
                                         <th>ชื่อครุภัณฑ์</th>
                                         <th>ราคาต้นทุน</th>
-                                        <th>ราคาขาย</th>
+                                        <th>ราคาขายขั้นต่ำ</th>
                                         <th>ราคาที่ขายได้จริง @unless ($isLostReason)<span class="required">*</span>@endunless</th>
                                     </tr>
                                 </thead>
@@ -151,7 +151,7 @@
 
         <div class="confirm-overlay" id="saveResultOverlay" aria-hidden="true">
             <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="saveResultConfirmTitle">
-                <div class="confirm-icon success-confirm-icon">
+                <div class="confirm-icon success-confirm-icon save-confirm-icon">
                     <svg><use href="#icon-success"></use></svg>
                 </div>
                 <h3 id="saveResultConfirmTitle">ยืนยันการบันทึกผลการจำหน่าย</h3>

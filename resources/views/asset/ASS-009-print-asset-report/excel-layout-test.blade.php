@@ -29,7 +29,7 @@
 <body>
     <h1>Excel Layout Test</h1>
     <div class="report">
-        <div class="title">ทะเบียนคุมครุภัณฑ์</div>
+        <div class="title">รายงานทะเบียนคุมทรัพย์สิน</div>
         <div class="meta">
             <strong>ส่วนราชการ</strong><span>{{ $first['government_department'] ?? '-' }}</span>
             <strong>หน่วยงาน</strong><span>{{ $first['org_name'] ?? '-' }}</span>

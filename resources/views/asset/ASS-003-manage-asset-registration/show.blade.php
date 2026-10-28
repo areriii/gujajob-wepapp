@@ -52,6 +52,10 @@
                     <label>อัตราค่าเสื่อม</label>
                     <input type="text" readonly value="{{ $asset->category->depreciation_rate ?? '-' }}">
                 </div>
+                <div class="form-field">
+                    <label>สถานะการซื้อทดแทน</label>
+                    <input type="text" disabled value="{{ \App\Http\Controllers\AssetController::REPLACEMENT_STATUS[$asset->replacement_status ?? 'no'] ?? '-' }}">
+                </div>
             </div>
 
             <div class="form-row one-col">

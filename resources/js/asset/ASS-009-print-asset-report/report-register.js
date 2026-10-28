@@ -49,14 +49,20 @@ if (!window.__assetRegisterPrintBound) {
         isGeneratingPdf = true;
         printButton.disabled = true;
         try {
-            const response = await fetch(pdfUrl);
+            const response = await fetch(pdfUrl, { cache: 'no-store' });
             if (!response.ok) {
                 throw new Error(`PDF request failed with status ${response.status}`);
             }
 
+            const isTestRequest = new URL(pdfUrl, window.location.href).searchParams.get('pdf_test') === '1';
             const isTestPreview = (response.headers.get('content-disposition') || '').includes('inline');
             const blob = await response.blob();
             const objectUrl = URL.createObjectURL(blob);
+
+            if (isTestRequest && !isTestPreview) {
+                URL.revokeObjectURL(objectUrl);
+                throw new Error('Explicit PDF test mode did not return an inline preview. Download blocked.');
+            }
 
             if (isTestPreview) {
                 console.log('TEST MODE - preview PDF, no download:', blob.type, blob.size, 'bytes');

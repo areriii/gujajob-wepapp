@@ -247,11 +247,44 @@
     color: #ffffff;
 }
 
-/* ─── Reject confirmation popup icon ─────────────────────────────────────── */
+/* Same as the save confirmation button (MAT-001 "ยืนยันการบันทึก") */
+.approve-confirm-btn {
+    border: 1px solid #0ca678;
+    background: #0ca678;
+    color: #ffffff;
+}
+
+.approve-confirm-btn:hover:not(:disabled) {
+    background: #099268;
+    border-color: #099268;
+}
+
+.approve-confirm-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ─── Reject confirmation popup: same reds as the delete confirmation (MAT-001) ─ */
 
 .reject-confirm-icon {
-    background: #fef2f2;
-    color: #ef4444;
+    background: #fee2e2;
+    color: #b42318;
+}
+
+.reject-confirm-btn {
+    border: 1px solid #9b2c2c;
+    background: #9b2c2c;
+    color: #ffffff;
+}
+
+.reject-confirm-btn:hover:not(:disabled) {
+    background: #7f1d1d;
+    border-color: #7f1d1d;
+}
+
+.reject-confirm-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* ─── Read-only state (already approved / rejected) ─────────────────────── */

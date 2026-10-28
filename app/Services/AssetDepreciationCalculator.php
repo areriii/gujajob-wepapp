@@ -62,8 +62,8 @@ class AssetDepreciationCalculator
                 // Whole days: in Carbon 3 diffInDays() is fractional when the end is 23:59:59.
                 $days = (int) $cursor->copy()->startOfDay()->diffInDays($periodEnd->copy()->startOfDay()) + 1;
                 $depreciation = round($annual * $days / ($cursor->isLeapYear() ? 366 : 365), 2);
-                $months = 0; // a day-based period is labelled in days only
-
+                // Depreciated by day, but labelled in whole months + remaining days like every other period.
+                [$months, $days] = $this->monthsAndDays($cursor, $periodEnd);
             }
 
             $uncappedDepreciation = $depreciation;
@@ -206,8 +206,32 @@ class AssetDepreciationCalculator
         return max(0, (($end->year - $start->year) * 12) + $end->month - $start->month + 1);
     }
 
+    /** @return array{0: int, 1: int} whole calendar months from $start through $end (inclusive), then the leftover days */
+    private function monthsAndDays(Carbon $start, Carbon $end): array
+    {
+        $from = $start->copy()->startOfDay();
+        $until = $end->copy()->startOfDay()->addDay();
+        $months = max(0, ($until->year - $from->year) * 12 + $until->month - $from->month);
+        if ($months > 0 && $from->copy()->addMonthsNoOverflow($months)->gt($until)) {
+            $months--;
+        }
+
+        return [$months, (int) $from->copy()->addMonthsNoOverflow($months)->diffInDays($until)];
+    }
+
+    /**
+     * Labels are shown in whole months: leftover days round to the nearest month (15 days or more
+     * counts as a month, as with the acceptance-month rule), e.g. 1 month 30 days -> 2 months.
+     */
     private function periodLabel(int $months, int $days): string
     {
+        if ($days >= 15) {
+            $months++;
+        }
+        if ($months > 0) {
+            $days = 0; // a period shorter than half a month keeps its days instead of reading "0"
+        }
+
         $parts = [];
         $years = intdiv($months, 12);
         $remainingMonths = $months % 12;

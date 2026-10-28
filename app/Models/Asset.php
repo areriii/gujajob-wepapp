@@ -43,6 +43,7 @@ class Asset extends Model
         'ass_trans_remark',
         'remain_price',
         'ass_status',
+        'replacement_status',
         'created_by',
         'updated_by',
     ];

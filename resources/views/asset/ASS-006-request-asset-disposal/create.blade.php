@@ -165,7 +165,7 @@
             <div class="confirm-overlay" id="saveDisposalOverlay" aria-hidden="true">
                 <div class="confirm-modal" role="dialog" aria-modal="true"
                      aria-labelledby="saveDisposalConfirmTitle">
-                    <div class="confirm-icon success-confirm-icon">
+                    <div class="confirm-icon success-confirm-icon save-confirm-icon">
                         <svg><use href="#icon-success"></use></svg>
                     </div>
                     <h3 id="saveDisposalConfirmTitle">ยืนยันการแจ้งขอจำหน่าย</h3>

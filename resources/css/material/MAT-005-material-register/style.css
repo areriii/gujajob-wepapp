@@ -271,6 +271,11 @@ textarea {
     background: #edf0f3;
 }
 
+/* Organization search box: keep the text clear of the dropdown arrow */
+.field-group .guja-autocomplete__input {
+    padding-right: 32px;
+}
+
 .department-field input {
     color: var(--primary);
     font-weight: 700;

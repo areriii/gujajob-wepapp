@@ -7,6 +7,7 @@ use App\Models\GlbOrganization;
 use App\Models\Material;
 use App\Models\MaterialProcurement;
 use App\Models\MaterialProcurementList;
+use App\Services\MaterialInventoryService;
 use App\Services\OrganizationVisibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +22,10 @@ use Throwable;
 
 class MaterialReceivingController extends Controller
 {
-    public function __construct(private readonly OrganizationVisibilityService $orgVisibility) {}
+    public function __construct(
+        private readonly OrganizationVisibilityService $orgVisibility,
+        private readonly MaterialInventoryService $inventory,
+    ) {}
     public function index(Request $request): View
     {
         $searchBy  = $request->string('search_by', 'receipt_no')->value();
@@ -149,8 +153,9 @@ class MaterialReceivingController extends Controller
                     'updated_by' => $userId,
                 ]);
 
+                $lines = [];
                 foreach ($stagedItems as $item) {
-                    MaterialProcurementList::create([
+                    $lines[] = MaterialProcurementList::create([
                         'id' => $this->nextProcurementListId(),
                         'mat_pro_id' => $procurementId,
                         'mat_id' => $item['mat_id'],
@@ -160,6 +165,7 @@ class MaterialReceivingController extends Controller
                         'updated_by' => $userId,
                     ]);
                 }
+                $this->inventory->applyReceiptLines(null, [], (int) $validated['org_id'], $lines, $userId);
 
                 return $procurementId;
             });
@@ -252,8 +258,9 @@ class MaterialReceivingController extends Controller
                     'updated_by'           => $userId2,
                 ]);
 
+                $lines = [];
                 foreach ($stagedItems as $item) {
-                    MaterialProcurementList::create([
+                    $lines[] = MaterialProcurementList::create([
                         'id'         => $this->nextProcurementListId(),
                         'mat_pro_id' => $procurementId,
                         'mat_id'     => $item['mat_id'],
@@ -263,6 +270,7 @@ class MaterialReceivingController extends Controller
                         'updated_by' => $userId2,
                     ]);
                 }
+                $this->inventory->applyReceiptLines(null, [], $orgId, $lines, $userId2);
 
                 return $procurementId;
             });
@@ -321,6 +329,8 @@ class MaterialReceivingController extends Controller
 
             DB::connection('oracle')->transaction(function () use ($record, $validated, $request): void {
                 $userId = (int) Auth::id();
+                $orgBefore = (int) $record->org_id;
+                $linesBefore = $this->receiptLines($record->id);
                 $record->update([
                     'dealer_id'            => (int) $validated['dealer_id'],
                     'org_id'               => (int) $validated['org_id'],
@@ -357,10 +367,14 @@ class MaterialReceivingController extends Controller
                             ->update($updateData);
                     }
                 }
+
+                // Quantity changes and a change of receiving organization move the stock with them.
+                $this->inventory->applyReceiptLines($orgBefore, $linesBefore, (int) $validated['org_id'], $this->receiptLines($record->id), $userId);
             });
 
+            // Saving is the last step of editing, so it returns to the list
             return redirect()
-                ->route('material.receiving.edit', $record->mat_pro_code)
+                ->route('material.receiving.index')
                 ->with('success', 'บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว');
         } catch (ValidationException $exception) {
             throw $exception;
@@ -391,7 +405,7 @@ class MaterialReceivingController extends Controller
                 $newId  = $this->nextProcurementListId();
                 $userId = (int) Auth::id();
 
-                return MaterialProcurementList::create([
+                $line = MaterialProcurementList::create([
                     'id'         => $newId,
                     'mat_pro_id' => $record->id,
                     'mat_id'     => $item['mat_id'],
@@ -400,6 +414,9 @@ class MaterialReceivingController extends Controller
                     'created_by' => $userId,
                     'updated_by' => $userId,
                 ]);
+                $this->inventory->applyReceiptLines((int) $record->org_id, [], (int) $record->org_id, [$line], $userId);
+
+                return $line;
             });
 
             $material = Material::query()->find($item['mat_id']);
@@ -442,7 +459,8 @@ class MaterialReceivingController extends Controller
             ->firstOrFail();
 
         try {
-            DB::connection('oracle')->transaction(function () use ($item): void {
+            DB::connection('oracle')->transaction(function () use ($item, $record): void {
+                $this->inventory->applyReceiptLines((int) $record->org_id, [$item], (int) $record->org_id, [], (int) Auth::id());
                 $item->delete();
             });
 
@@ -487,6 +505,7 @@ class MaterialReceivingController extends Controller
 
         try {
             DB::connection('oracle')->transaction(function () use ($record): void {
+                $this->inventory->applyReceiptLines((int) $record->org_id, $this->receiptLines($record->id), (int) $record->org_id, [], (int) Auth::id());
                 MaterialProcurementList::query()
                     ->where('mat_pro_id', $record->id)
                     ->delete();
@@ -655,6 +674,14 @@ class MaterialReceivingController extends Controller
         return (int) MaterialProcurement::query()->max('id') + 1;
     }
 
+    /** The receipt's lines as MaterialInventoryService::applyReceiptLines() expects them. */
+    private function receiptLines(int $procurementId)
+    {
+        return MaterialProcurementList::query()
+            ->where('mat_pro_id', $procurementId)
+            ->get(['id', 'mat_id', 'mat_amt', 'mat_price']);
+    }
+
     private function nextProcurementListId(): int
     {
         return (int) MaterialProcurementList::query()->max('id') + 1;
@@ -814,17 +841,13 @@ class MaterialReceivingController extends Controller
             ->get(['id', 'mat_code', 'mat_name', 'unit']);
     }
 
+    /** วิธีการจัดซื้อจัดจ้าง from CG_REF_CODES (PROCUREMENT_METHOD); the code is what MAT_PRO_METHOD stores. */
     private function methodOptions(): array
     {
         try {
-            $data = \App\Models\MaterialProcurementMethod::query()
-                ->where('is_active', 1)
-                ->orderBy('sort_order')
-                ->orderBy('method_id')
-                ->pluck('method_name', 'method_id')
-                ->toArray();
-            return $data;
+            return \App\Models\CgRefCode::options('PROCUREMENT_METHOD');
         } catch (\Throwable $e) {
+            Log::error('MAT-002 procurement methods failed to load', ['error' => $e->getMessage()]);
             return [];
         }
     }

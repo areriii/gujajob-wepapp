@@ -203,7 +203,7 @@ class AssetReportController extends Controller
         );
 
         return view('asset.ASS-009-print-asset-report.report-register', [
-            'pageTitle' => 'ทะเบียนคุมครุภัณฑ์',
+            'pageTitle' => 'รายงานทะเบียนคุมทรัพย์สิน',
             'assets'    => $assets,
             'generatedAt' => now('Asia/Bangkok')->addYears(543)->format('d/m/Y H.i') . ' น.',
         ]);
@@ -228,11 +228,22 @@ class AssetReportController extends Controller
         $pdf = Pdf::loadView('asset.ASS-009-print-asset-report.report-register-pdf', [
             'assets' => $assets,
             'generatedAt' => $generatedAt,
-        ]);
+        ])->setPaper('a4', 'landscape');
 
-        return config('app.pdf_test_mode')
+        $response = (config('app.pdf_test_mode') || $this->pdfTestRequested($request))
             ? $pdf->stream('asset-register-report.pdf')
             : $pdf->download('asset-register-report.pdf');
+
+        return $response->withHeaders([
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
+    }
+
+    private function pdfTestRequested(Request $request): bool
+    {
+        return in_array(app()->environment(), ['local', 'testing'], true)
+            && $request->boolean('pdf_test');
     }
 
     public function exportAssetRegister(Request $request)
@@ -314,10 +325,11 @@ class AssetReportController extends Controller
             ->leftJoin('GLB_ORGANIZATION AS ORG', 'ASSET.org_id', '=', 'ORG.org_id')
             ->leftJoin('GLB_ORGANIZATION AS SUB_ORG', 'ASSET.sub_org_id', '=', 'SUB_ORG.org_id')
             ->leftJoin('DEALER', 'ASSET.dealer_id', '=', 'DEALER.id')
+            // Buddhist-era dates; adding INTERVAL '543' YEAR would fail on 29 February (ORA-01839).
             ->selectRaw("ASSET.id, ASSET.ass_code, ASSET.ass_desc, ASSET.ass_model, ASSET.ass_serail,
-                ASSET.inspect_date, TO_CHAR(ASSET.inspect_date, 'DD/MM/YYYY') AS inspect_date_th,
+                ASSET.inspect_date, TO_CHAR(ASSET.inspect_date, 'DD/MM/') || (EXTRACT(YEAR FROM ASSET.inspect_date) + 543) AS inspect_date_th,
                 ASSET.ass_price, ASSET.ass_lifetime, ASSET.ass_contact_no,
-                TO_CHAR(ASSET.ass_contact_date, 'DD/MM/YYYY') AS ass_contact_date_th,
+                TO_CHAR(ASSET.ass_contact_date, 'DD/MM/') || (EXTRACT(YEAR FROM ASSET.ass_contact_date) + 543) AS ass_contact_date_th,
                 ASSET.remarks, ASSET.created_at, ASSET_CATEGORY.asscat_code, ASSET_CATEGORY.asscat_name,
                 ASSET_CATEGORY.depreciation_rate, ORG.org_name, ORG.zone_flg AS org_zone_flg,
                 SUB_ORG.org_name AS sub_org_name, DEALER.dealer_name,
@@ -376,13 +388,14 @@ class AssetReportController extends Controller
     {
         \Log::info('exportAssetLedger: START');
         $data = $this->assetLedgerData($request);
+        $fiscalYear = $data['fiscalYear'];
         \Log::info('exportAssetLedger: assetLedgerData returned, assets count: ' . count($data['assets']->getCollection()));
-        $rows = $data['assets']->getCollection()->values()->map(function ($asset, $index) use ($data) {
+        $rows = $data['assets']->getCollection()->values()->map(function ($asset, $index) use ($fiscalYear) {
             $code = trim((string) ($asset->asscat_code ?? '')) . ' ' . trim((string) ($asset->ass_code ?? ''));
 
             return [
                 $index + 1,
-                $data['fiscalYear'],
+                $fiscalYear,
                 $asset->inspect_date_th,
                 $asset->asscat_group,
                 $asset->asscat_name,
@@ -407,23 +420,28 @@ class AssetReportController extends Controller
                 'headers' => ['ลำดับ', 'ปีงบประมาณ', 'วันที่ตรวจรับ', 'หมวดครุภัณฑ์', 'ประเภทครุภัณฑ์', 'รหัสครุภัณฑ์', 'รายการ/รายละเอียด', 'ยี่ห้อ/รุ่น', 'Serial No.', 'จำนวน', 'หน่วยนับ', 'ราคาที่ได้มาต่อหน่วย', 'กลุ่ม/ฝ่าย', 'หมายเหตุ', 'สถานะ'],
                 'rows' => $rows,
                 'reportOrgLine' => $data['reportOrgLine'],
-                'fiscalYear' => $data['fiscalYear'],
+                'fiscalYear' => $fiscalYear,
             ]);
         }
 
         \Log::info('exportAssetLedger: calling xlsx->download()');
-        return $this->xlsx->download(
+        return $this->xlsx->structuredAssetLedger(
             'asset-ledger-report.xlsx',
+            'รายงานทะเบียนครุภัณฑ์ ประจำปีงบประมาณ พ.ศ. ' . $fiscalYear,
+            $data['reportOrgLine'],
             ['ลำดับ', 'ปีงบประมาณ', 'วันที่ตรวจรับ', 'หมวดครุภัณฑ์', 'ประเภทครุภัณฑ์', 'รหัสครุภัณฑ์', 'รายการ/รายละเอียด', 'ยี่ห้อ/รุ่น', 'Serial No.', 'จำนวน', 'หน่วยนับ', 'ราคาที่ได้มาต่อหน่วย', 'กลุ่ม/ฝ่าย', 'หมายเหตุ', 'สถานะ'],
             $rows,
-            'รายงานทะเบียนครุภัณฑ์ ประจำปีงบประมาณ พ.ศ. ' . $data['fiscalYear']
         );
     }
 
     /** @return array{assets: \Illuminate\Pagination\LengthAwarePaginator, fiscalYear: int, orgId: int, subOrgId: int, reportOrgLine: string} */
     private function assetLedgerData(Request $request): array
     {
+        // Buddhist-era fiscal year (e.g. 2568); a Gregorian year typed by mistake (e.g. 2025) is converted.
         $fiscalYear = (int) $request->input('fiscal_year', 0);
+        if ($fiscalYear > 0 && $fiscalYear < 2400) {
+            $fiscalYear += 543;
+        }
         $orgId = (int) $request->input('org_id', 0);
         $subOrgId = (int) $request->input('sub_org_id', 0);
         $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
@@ -432,7 +450,8 @@ class AssetReportController extends Controller
             throw \Illuminate\Validation\ValidationException::withMessages(['report' => $error]);
         }
 
-        $ceYear = $fiscalYear - 543;
+        // Fiscal year 2568 = 1 Oct 2024 - 30 Sep 2025, as everywhere else in the system.
+        $range = \App\Services\FiscalYearService::dateRange($fiscalYear);
 
         $completedDisposals = DB::connection('oracle')
             ->table('ASSET_SELLING AS s')
@@ -461,7 +480,7 @@ class AssetReportController extends Controller
             ->leftJoinSub($completedDisposals, 'completed_disposals', 'completed_disposals.ass_id', '=', 'ASSET.id')
             ->selectRaw("ASSET.id, ASSET.ass_code, ASSET_CATEGORY.asscat_code, ASSET_CATEGORY.asscat_name,
                 ASSET.ass_desc, ASSET.inspect_date,
-                TO_CHAR(ASSET.inspect_date, 'DD-MM-') || TO_CHAR(ASSET.inspect_date + INTERVAL '543' YEAR(3), 'YYYY') AS inspect_date_th,
+                TO_CHAR(ASSET.inspect_date, 'DD-MM-') || (EXTRACT(YEAR FROM ASSET.inspect_date) + 543) AS inspect_date_th,
                 ASSET.ass_price, ASSET.remain_price, ASSET.ass_status, ASSET.ass_model, ASSET.ass_serail,
                 ASSET_CATEGORY.asscat_group, ASSET_CATEGORY.asscat_unit, ASSET.remarks,
                 GLB_ORGANIZATION.org_name, SUB_ORG.org_name AS sub_org_name,
@@ -475,7 +494,7 @@ class AssetReportController extends Controller
                      WHEN COALESCE(completed_disposals.final_status, ASSET.ass_status) = '6' THEN 'สูญหาย'
                      ELSE 'อื่น ๆ' END AS status_label")
             ->whereIn('ASSET.org_id', $visibleOrgIds)
-            ->whereRaw('ASSET.inspect_date >= ? AND ASSET.inspect_date <= ?', ["{$ceYear}-10-01", ($ceYear + 1) . '-09-30'])
+            ->whereRaw("ASSET.inspect_date >= TO_DATE(?, 'YYYY-MM-DD') AND ASSET.inspect_date < TO_DATE(?, 'YYYY-MM-DD') + 1", [$range['start'], $range['end']])
             ->whereRaw("COALESCE(completed_disposals.final_status, ASSET.ass_status) = ?", ['2'])
             // The selected parent is validated against the child hierarchy above;
             // assets are stored against the selected child organization.
@@ -483,7 +502,7 @@ class AssetReportController extends Controller
 
         return [
             'assets' => $query->orderBy('ASSET.ass_code')->paginate(self::PER_PAGE),
-            'fiscalYear' => $ceYear,
+            'fiscalYear' => $fiscalYear,
             'orgId' => $orgId,
             'subOrgId' => $subOrgId,
             'reportOrgLine' => $this->organizationLine($orgId, $subOrgId),

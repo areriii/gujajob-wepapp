@@ -20,6 +20,18 @@ it('keeps the full fiscal-year schedule used by the asset control register', fun
         ->and($schedule['periods'][5])->toMatchArray(['end_date' => '2027-09-30', 'depreciation' => 2115.67, 'accumulated' => 25399.0, 'net_value' => 1.0]);
 });
 
+it('labels periods in whole months, rounding 15 days or more up to a month', function () {
+    // The final period is capped 1 baht short, which used to read "1 เดือน 30 วัน" / "10 เดือน 30 วัน".
+    $twoMonths = $this->calculator->calculate(25000, 5, Carbon::parse('2022-12-01'), 2566)['periods'];
+    $elevenMonths = $this->calculator->calculate(25000, 5, Carbon::parse('2022-08-20'), 2565)['periods'];
+    // Day-based period up to the calculation date: 1 Oct - 23 Sep = 11 months 23 days.
+    $byDay = $this->calculator->calculate(25000, 5, Carbon::parse('2025-10-01'), 2569, Carbon::parse('2026-09-23'))['periods'];
+
+    expect(end($twoMonths)['label'])->toBe('คำนวณค่าเสื่อมราคา ระยะเวลา 2 เดือน')
+        ->and(end($elevenMonths)['label'])->toBe('คำนวณค่าเสื่อมราคา ระยะเวลา 11 เดือน')
+        ->and($byDay[0]['label'])->toBe('คำนวณค่าเสื่อมราคา ระยะเวลา 1 ปี');
+});
+
 it('values an asset at the end of a fiscal year exactly like the register row for that year', function () {
     $value = $this->calculator->valueAsOf(25400, 5, '2022-03-15', '2025-09-30');
 

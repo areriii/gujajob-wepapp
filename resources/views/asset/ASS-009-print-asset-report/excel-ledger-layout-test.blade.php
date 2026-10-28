@@ -20,6 +20,14 @@
     <table>
         <thead>
             <tr>
+                <th colspan="7"></th>
+                <th colspan="8">รายงานทะเบียนครุภัณฑ์ ประจำปีงบประมาณ พ.ศ. {{ $fiscalYear }}</th>
+            </tr>
+            <tr>
+                <th colspan="7"></th>
+                <th colspan="8">{{ $reportOrgLine ?: '-' }}</th>
+            </tr>
+            <tr>
                 @foreach ($headers as $header)
                     <th>{{ $header }}</th>
                 @endforeach

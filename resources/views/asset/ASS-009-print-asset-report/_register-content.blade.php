@@ -14,7 +14,7 @@
     <div class="asset-control-content">
         <div class="asset-control-heading">
             @if ($showReportTitle ?? true)
-                <div class="asset-control-title">ทะเบียนคุมครุภัณฑ์</div>
+                <div class="asset-control-title">รายงานทะเบียนคุมทรัพย์สิน</div>
             @endif
             <div class="asset-control-administration">
                 <p><span>ส่วนราชการ</span><strong>{{ $governmentDepartment }}</strong></p>
@@ -47,6 +47,10 @@
                     <col style="width: 8%;">
                 </colgroup>
                 <thead>
+                    @if ($pdfColumnSizer ?? false)
+                        {{-- Dompdf ignores <col> widths and sizes a fixed-layout table from its first row. --}}
+                        <tr class="pdf-column-sizer">@for ($i = 0; $i < 12; $i++)<td></td>@endfor</tr>
+                    @endif
                     <tr>
                         <th rowspan="2">วัน เดือน ปี</th>
                         <th rowspan="2">เลขที่เอกสาร</th>
@@ -57,12 +61,12 @@
                         <th rowspan="2">หมายเหตุ</th>
                     </tr>
                     <tr>
-                        <th>ชื่อสินทรัพย์ คำอธิบายและรายละเอียด<br>ลักษณะ/คุณสมบัติ/ขนาด/ยี่ห้อ/รุ่น/<br>แบบ/หมายเลขเครื่อง/</th>
+                        <th>ชื่อสินทรัพย์ คำอธิบายและรายละเอียด<br>ลักษณะ/คุณสมบัติ/ขนาด/ยี่ห้อ/<br>รุ่น/แบบ/หมายเลขเครื่อง/</th>
                         <th>จำนวน<br>(หน่วย)</th>
-                        <th>ราคาต่อหน่วย/<br>ชุด/กลุ่ม</th>
+                        <th>ราคา<br>ต่อหน่วย/<br>ชุด/กลุ่ม</th>
                         <th>มูลค่ารวม</th>
                         <th>อายุการ<br>ใช้งาน</th>
-                        <th>อัตรา<br>ค่าเสื่อมราคา</th>
+                        <th>อัตรา<br>ค่าเสื่อม<br>ราคา</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -102,7 +106,7 @@
             <button
                 type="button"
                 class="print-btn"
-                data-pdf-url="{{ route('asset.reports.register.download', request()->only(['category_id', 'asset_id'])) }}"
+                data-pdf-url="{{ route('asset.reports.register.download', array_merge(request()->only(['category_id', 'asset_id']), request()->boolean('pdf_test') ? ['pdf_test' => 1] : [])) }}"
             >
                 <svg><use href="#icon-printer"></use></svg><span>พิมพ์</span>
             </button>

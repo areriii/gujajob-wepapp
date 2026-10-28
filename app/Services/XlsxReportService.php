@@ -43,7 +43,8 @@ class XlsxReportService
             foreach (array_values($row) as $colIndex => $value) {
                 $ref = $this->column($colIndex + 1) . ($rowIndex + 1);
                 $escaped = htmlspecialchars((string) ($value ?? ''), ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                $sheet .= '<c r="' . $ref . '" t="inlineStr" s="2"><is><t>' . $escaped . '</t></is></c>';
+                $style = $title !== '' && $rowIndex === 0 ? 1 : 2;
+                $sheet .= '<c r="' . $ref . '" t="inlineStr" s="' . $style . '"><is><t>' . $escaped . '</t></is></c>';
             }
             $sheet .= '</row>';
         }
@@ -55,6 +56,117 @@ class XlsxReportService
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => ($inline ? 'inline' : 'attachment') . '; filename="' . $filename . '"',
         ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * ASS-003 forecast asset list (Excel icon on the list page): title, the calculation's conditions, the
+     * asset table and a total row. Amounts are numbers, so the sheet can be summed and filtered.
+     *
+     * @param list<array<string, mixed>> $assets
+     */
+    public function structuredForecastAssets(string $filename, string $title, string $conditions, string $percent, array $assets, float $totalBudget)
+    {
+        $headers = ['ลำดับ', 'รหัสครุภัณฑ์', 'ชื่อครุภัณฑ์', 'หมวดครุภัณฑ์', 'หน่วยงาน', 'วันที่ตรวจรับ', 'ปีที่ครบกำหนดทดแทน',
+            'มูลค่า', 'ค่าเสื่อมราคาสะสม', 'มูลค่าคงเหลือ', "งบประมาณทดแทน (+{$percent}%)"];
+        $last = $this->column(count($headers));
+        $money = fn ($value) => is_numeric($value) ? ['value' => (float) $value, 'style' => 'money'] : ['value' => '-', 'style' => 'header'];
+
+        $rows = [
+            [['value' => $title, 'style' => 'title']],
+            [['value' => $conditions, 'style' => 'label']],
+            array_map(fn (string $header) => ['value' => $header, 'style' => 'header'], $headers),
+        ];
+        foreach (array_values($assets) as $index => $asset) {
+            $rows[] = [
+                ['value' => $index + 1, 'style' => 'header'],
+                ['value' => $asset['display_code'] ?? $asset['asset_code'] ?? '-', 'style' => 'value'],
+                ['value' => $asset['category_name'] ?? '-', 'style' => 'value'],
+                ['value' => $asset['category_group'] ?? '-', 'style' => 'value'],
+                ['value' => $asset['organization_name'] ?? '-', 'style' => 'value'],
+                ['value' => $asset['acceptance_date'] ?? '-', 'style' => 'date'],
+                ['value' => 'พ.ศ. ' . ((int) ($asset['forecast_year'] ?? 0) + 543), 'style' => 'date'],
+                $money($asset['acquisition_value'] ?? null),
+                $money($asset['accumulated_depreciation'] ?? null),
+                $money($asset['current_value'] ?? null),
+                $money($asset['replacement_budget'] ?? null),
+            ];
+        }
+        $totalRow = count($rows) + 1;
+        $rows[] = [
+            ['value' => 'รวม ' . number_format(count($assets)) . ' รายการ', 'style' => 'label'],
+            ...array_fill(0, count($headers) - 2, ['value' => '', 'style' => 'blank']),
+            ['value' => round($totalBudget, 2), 'style' => 'money'],
+        ];
+
+        return $this->buildStructuredWorkbook($filename, [
+            'cols'    => array_map(
+                fn (int $width, int $index) => ['min' => $index + 1, 'max' => $index + 1, 'width' => $width, 'customWidth' => true],
+                [8, 18, 30, 26, 30, 13, 14, 14, 17, 14, 20],
+                array_keys($headers),
+            ),
+            'rows'    => $rows,
+            'merges'  => ["A1:{$last}1", "A2:{$last}2", "A{$totalRow}:J{$totalRow}"],
+            'heights' => [1 => 30],
+        ]);
+    }
+
+    /** @param array<int, array<int, scalar|null>> $rows */
+    public function structuredAssetLedger(
+        string $filename,
+        string $title,
+        string $organizationLine,
+        array $headers,
+        array $rows,
+        bool $inline = false,
+    ) {
+        $blankRow = array_fill(0, count($headers), ['value' => '', 'style' => 'blank']);
+        $titleRow = $blankRow;
+        $titlePrefix = 'รายงานทะเบียนครุภัณฑ์';
+        $titleSuffix = preg_replace('/^รายงานทะเบียนครุภัณฑ์\s*/u', '', $title) ?: $title;
+        $titleRow[4] = ['value' => $titlePrefix, 'style' => 'title-left'];
+        $titleRow[7] = ['value' => $titleSuffix, 'style' => 'title-right'];
+        $organizationRow = $blankRow;
+        $organizationRow[7] = ['value' => $organizationLine, 'style' => 'value'];
+
+        $sheetRows = [$titleRow, $organizationRow, array_map(
+            fn (string $header) => ['value' => $header, 'style' => 'header'],
+            $headers,
+        )];
+
+        foreach ($rows as $row) {
+            $values = array_values($row);
+            $sheetRows[] = array_map(
+                function ($value, int $index) {
+                    $style = match ($index) {
+                        0, 1, 2, 9, 10, 14 => 'center',
+                        11 => 'money',
+                        default => 'value',
+                    };
+
+                    return ['value' => $value ?? '-', 'style' => $style];
+                },
+                $values,
+                array_keys($values),
+            );
+        }
+
+        $columns = [11, 12, 14, 16, 18, 18, 28, 18, 18, 10, 12, 18, 18, 18, 14];
+
+        return $this->buildStructuredWorkbook($filename, [
+            'cols' => array_map(
+                fn (int $width, int $index) => [
+                    'min' => $index + 1,
+                    'max' => $index + 1,
+                    'width' => $width,
+                    'customWidth' => true,
+                ],
+                $columns,
+                array_keys($columns),
+            ),
+            'rows' => $sheetRows,
+            'merges' => ['E1:G1', 'H1:O1', 'H2:O2'],
+            'heights' => [1 => 30],
+        ], $inline);
     }
 
     /**
@@ -71,7 +183,7 @@ class XlsxReportService
         $first = $assets[0] ?? [];
         $rows = [
             [
-                ['value' => 'ทะเบียนคุมครุภัณฑ์', 'style' => 'title', 'merge' => 'A1:L1'],
+                ['value' => 'รายงานทะเบียนคุมทรัพย์สิน', 'style' => 'title', 'merge' => 'A1:L1'],
             ],
             [
                 ['value' => 'ส่วนราชการ', 'style' => 'label'],
@@ -195,7 +307,7 @@ class XlsxReportService
     {
         $first = $assets[0] ?? [];
         $rows = [
-            [['value' => 'ทะเบียนคุมครุภัณฑ์', 'style' => 'title']],
+            [['value' => 'รายงานทะเบียนคุมทรัพย์สิน', 'style' => 'title']],
             [
                 ['value' => '', 'style' => 'blank'], ['value' => '', 'style' => 'blank'], ['value' => '', 'style' => 'blank'],
                 ['value' => '', 'style' => 'blank'], ['value' => '', 'style' => 'blank'], ['value' => '', 'style' => 'blank'],
@@ -284,15 +396,17 @@ class XlsxReportService
 
         return [
             'cols' => [
-                ['min' => 1, 'max' => 1, 'width' => 11, 'customWidth' => true], ['min' => 2, 'max' => 2, 'width' => 12, 'customWidth' => true],
-                ['min' => 3, 'max' => 3, 'width' => 30, 'customWidth' => true], ['min' => 4, 'max' => 4, 'width' => 8, 'customWidth' => true],
+                ['min' => 1, 'max' => 1, 'width' => 11, 'customWidth' => true], ['min' => 2, 'max' => 2, 'width' => 20, 'customWidth' => true],
+                ['min' => 3, 'max' => 3, 'width' => 40, 'customWidth' => true], ['min' => 4, 'max' => 4, 'width' => 6, 'customWidth' => true],
                 ['min' => 5, 'max' => 5, 'width' => 12, 'customWidth' => true], ['min' => 6, 'max' => 6, 'width' => 12, 'customWidth' => true],
-                ['min' => 7, 'max' => 7, 'width' => 8, 'customWidth' => true], ['min' => 8, 'max' => 8, 'width' => 10, 'customWidth' => true],
+                ['min' => 7, 'max' => 7, 'width' => 6, 'customWidth' => true], ['min' => 8, 'max' => 8, 'width' => 10, 'customWidth' => true],
                 ['min' => 9, 'max' => 9, 'width' => 14, 'customWidth' => true], ['min' => 10, 'max' => 10, 'width' => 14, 'customWidth' => true],
                 ['min' => 11, 'max' => 11, 'width' => 14, 'customWidth' => true], ['min' => 12, 'max' => 12, 'width' => 12, 'customWidth' => true],
             ],
             'rows' => $rows,
             'merges' => array_values(array_unique($merges)),
+            // 18pt title; the second header row carries three lines of text.
+            'heights' => [1 => 30, 10 => 72],
         ];
     }
 
@@ -326,8 +440,9 @@ class XlsxReportService
         $rowsXml = '';
         foreach ($sheet['rows'] ?? [] as $rowIndex => $row) {
             $rowNumber = $rowIndex + 1;
-            $height = $rowNumber === 9 || $rowNumber === 10 ? '42' : ($rowNumber >= 11 ? '30' : '24');
-            $rowsXml .= '<row r="' . $rowNumber . '" ht="' . $height . '" customHeight="1">';
+            // Rows without a fixed height auto-fit their wrapped text when the file is opened.
+            $height = $sheet['heights'][$rowNumber] ?? null;
+            $rowsXml .= '<row r="' . $rowNumber . '"' . ($height !== null ? ' ht="' . $height . '" customHeight="1"' : '') . '>';
             foreach ($row as $colIndex => $cell) {
                 $cellData = is_array($cell) ? ($cell['value'] ?? '') : $cell;
                 $styleName = is_array($cell) ? ($cell['style'] ?? '') : '';
@@ -362,7 +477,7 @@ class XlsxReportService
 
     private function buildStylesXml(): string
     {
-        return '<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Tahoma"/></font><font><b/><sz val="12"/><name val="Tahoma"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf><xf numFmtId="10" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+        return '<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts><fonts count="2"><font><sz val="16"/><name val="TH Sarabun New"/><charset val="222"/></font><font><b/><sz val="18"/><name val="TH Sarabun New"/><charset val="222"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="10"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf><xf numFmtId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf><xf numFmtId="10" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
     }
 
     private function styleIndex(string $style): int
@@ -377,6 +492,8 @@ class XlsxReportService
             'number' => 6,
             'money' => 3,
             'percent' => 7,
+            'title-left' => 8,
+            'title-right' => 9,
             'blank' => 0,
             default => 0,
         };

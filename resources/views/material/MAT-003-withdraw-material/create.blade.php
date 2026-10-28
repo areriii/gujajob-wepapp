@@ -122,6 +122,19 @@
 
             <p id="stockInfo" class="stock-info-text" hidden></p>
 
+            {{-- Filled by script.js once items are on the list: materials this organization usually withdraws with them --}}
+            <div class="withdraw-recommend" id="withdrawRecommendations" data-url="{{ route('material.withdraw.recommendations') }}" hidden>
+                <div class="withdraw-recommend-title">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 18h6"/>
+                        <path d="M10 22h4"/>
+                        <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+                    </svg>
+                    <span>แนะนำจากประวัติการเบิกของหน่วยงาน</span>
+                </div>
+                <div class="withdraw-recommend-list" id="withdrawRecommendationList"></div>
+            </div>
+
             <h3 class="sub-table-title">รายการวัสดุที่เบิก</h3>
 
             <div class="table-wrapper compact-table-wrapper">
@@ -151,7 +164,7 @@
     {{-- Save confirmation overlay --}}
     <div class="confirm-overlay" id="saveWithdrawOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="saveWithdrawTitle">
-            <div class="confirm-icon success-confirm-icon">
+            <div class="confirm-icon success-confirm-icon save-confirm-icon">
                 <svg><use href="#icon-success"></use></svg>
             </div>
             <h3 id="saveWithdrawTitle">ยืนยันการบันทึกข้อมูลการเบิกวัสดุ</h3>

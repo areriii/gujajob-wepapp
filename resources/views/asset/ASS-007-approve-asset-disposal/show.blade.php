@@ -82,7 +82,7 @@
                                         <th>ชื่อครุภัณฑ์</th>
                                         <th>มูลค่าครุภัณฑ์</th>
                                         <th>มูลค่าคงเหลือ</th>
-                                        <th>ราคาขาย @if ($isPending && ! $isLostReason)<span class="required">*</span>@endif</th>
+                                        <th>ราคาขายขั้นต่ำ @if ($isPending && ! $isLostReason)<span class="required">*</span>@endif</th>
                                         <th>ราคาขายจริง</th>
                                     </tr>
                                 </thead>
@@ -101,7 +101,7 @@
                                                        <input type="number" step="0.01" min="0" class="price-input"
                                                            name="items[{{ $item->id }}][selling_min_price]"
                                                            value="{{ $isLostReason ? '0.00' : old('items.' . $item->id . '.selling_min_price', $item->selling_min_price) }}"
-                                                           aria-label="ราคาขายของ {{ $item->ass_code }}" @readonly($isLostReason)>
+                                                           aria-label="ราคาขายขั้นต่ำของ {{ $item->ass_code }}" @readonly($isLostReason)>
                                                     @error('items.' . $item->id . '.selling_min_price')
                                                         <span class="price-error-msg">{{ $message }}</span>
                                                     @enderror

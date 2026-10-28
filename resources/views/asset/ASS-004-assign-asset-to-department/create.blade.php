@@ -174,7 +174,7 @@
     <div class="confirm-overlay" id="saveConfirmOverlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true">
             <div class="confirm-icon save-confirm-icon">
-                <svg><use href="#icon-check-circle"></use></svg>
+                <svg><use href="#icon-success"></use></svg>
             </div>
             <h3>ยืนยันการบันทึก</h3>
             <p>คุณต้องการบันทึกการจัดสรรครุภัณฑ์นี้ใช่หรือไม่</p>

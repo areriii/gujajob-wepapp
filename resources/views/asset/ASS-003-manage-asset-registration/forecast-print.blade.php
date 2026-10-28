@@ -241,9 +241,7 @@
     $years         = $result['years'] ?? [];
     $assets        = $result['assets'] ?? [];
     $warnings      = $result['warnings'] ?? [];
-    $model         = $result['model'] ?? null;
-    $isDemo        = ($result['training_data_source'] ?? 'database') === 'demo';
-    $hasFallback   = collect($assets)->contains(fn ($a) => ($a['prediction_basis'] ?? '') === 'asset_price_trend');
+    $percent       = rtrim(rtrim(number_format((float) ($result['increase_percent'] ?? $params['increase_percent'] ?? 0), 2), '0'), '.');
     $money         = static fn ($value) => $value !== null && $value !== '' ? number_format((float) $value, 2) : '-';
 @endphp
 
@@ -255,7 +253,7 @@
 
     {{-- ── Title ── --}}
     <div class="report-title">รายงานพยากรณ์งบประมาณจัดซื้อครุภัณฑ์ทดแทน</div>
-    <div class="report-subtitle">ผลการพยากรณ์โดย AI (Ridge Regression) · ใช้สำหรับประกอบการวางแผนงบประมาณ</div>
+    <div class="report-subtitle">งบประมาณทดแทน = มูลค่าตอนซื้อ + {{ $percent }}% · ใช้สำหรับประกอบการวางแผนงบประมาณ</div>
     <hr class="report-divider">
 
     {{-- ── Meta ── --}}
@@ -276,6 +274,10 @@
                     (พ.ศ. {{ $startYear + 543 }}@if ($endYear !== $startYear) – {{ $endYear + 543 }}@endif)
                 @endif
             </span>
+        </div>
+        <div class="meta-row">
+            <span class="meta-label">เพิ่มจากมูลค่าตอนซื้อ</span>
+            <span class="meta-value">{{ $percent }}%</span>
         </div>
         <div class="meta-row">
             <span class="meta-label">หมวดครุภัณฑ์</span>
@@ -359,12 +361,11 @@
                     <th class="num-cell">มูลค่า (บาท)</th>
                     <th class="num-cell">ค่าเสื่อมราคาสะสม (บาท)</th>
                     <th class="num-cell">มูลค่าคงเหลือ (บาท)</th>
-                    <th class="num-cell">มูลค่าทดแทน (AI) (บาท)</th>
+                    <th class="num-cell">งบประมาณทดแทน (+{{ $percent }}%) (บาท)</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach ($assets as $a)
-                    @php $basis = $a['prediction_basis'] ?? 'category_trend'; @endphp
                     <tr>
                         <td class="center-cell">{{ $loop->iteration }}</td>
                         <td>{{ $a['asset_code'] ?? '-' }}</td>
@@ -376,13 +377,7 @@
                         <td class="num-cell">{{ $money($a['acquisition_value'] ?? null) }}</td>
                         <td class="num-cell">{{ $money($a['accumulated_depreciation'] ?? null) }}</td>
                         <td class="num-cell">{{ $money($a['current_value'] ?? null) }}</td>
-                        <td class="num-cell ai-cost">
-                            @if ($basis === 'unavailable' || ($a['predicted_replacement_cost'] ?? null) === null)
-                                <span class="muted">ไม่สามารถพยากรณ์ได้</span>
-                            @else
-                                {{ $money($a['predicted_replacement_cost']) }}@if ($basis === 'asset_price_trend') *@endif
-                            @endif
-                        </td>
+                        <td class="num-cell ai-cost">{{ $money($a['replacement_budget'] ?? null) }}</td>
                     </tr>
                 @endforeach
             </tbody>
@@ -407,27 +402,9 @@
             (หลักเกณฑ์เดียวกับทะเบียนคุมครุภัณฑ์: วิธีเส้นตรง มูลค่า ÷ อายุการใช้งาน คิดตามปีงบประมาณ เริ่มเดือนที่ตรวจรับ ถ้าหลังวันที่ 15 เริ่มเดือนถัดไป คงเหลือ 1 บาทเมื่อครบอายุ)
         </p>
         <p>
-            <strong>มูลค่าทดแทน (AI)</strong> = ราคาจัดซื้อครุภัณฑ์ใหม่ชื่อครุภัณฑ์เดียวกันที่คาดการณ์ในปีที่ครบกำหนดทดแทน
-            พยากรณ์ด้วย Ridge Regression จากราคาจัดซื้อย้อนหลังแยกตามชื่อครุภัณฑ์และปี ไม่ได้คำนวณจากมูลค่าคงเหลือ
+            <strong>งบประมาณทดแทน</strong> = มูลค่าตอนซื้อ × (1 + {{ $percent }}%) บวกครั้งเดียว ไม่ได้คำนวณจากมูลค่าคงเหลือ
+            ครุภัณฑ์ที่ไม่มีมูลค่าตอนซื้อในทะเบียนไม่ได้นับรวมในงบประมาณ
         </p>
-        @if ($hasFallback)
-            <p>* หมวดที่ไม่มีข้อมูลราคาย้อนหลัง ประมาณจากมูลค่าของครุภัณฑ์ปรับด้วยอัตราการเปลี่ยนแปลงราคาเฉลี่ย</p>
-        @endif
-        @if (is_array($model) && !empty($model['training_records']))
-            <p>
-                โมเดล: {{ $model['name'] ?? 'AI' }}
-                · ข้อมูลฝึกสอน: {{ number_format((int) $model['training_records']) }} รายการ
-                @if (($model['annual_price_growth_pct'] ?? null) !== null)
-                    · อัตราการเปลี่ยนแปลงราคาเฉลี่ย: {{ number_format((float) $model['annual_price_growth_pct'], 2) }}% ต่อปี
-                @endif
-                @if (($model['mape'] ?? null) !== null && ($model['evaluation_year'] ?? null) !== null)
-                    · ความคลาดเคลื่อนเฉลี่ย (MAPE) เมื่อทดสอบกับปี พ.ศ. {{ $model['evaluation_year'] + 543 }}: {{ number_format((float) $model['mape'], 2) }}%
-                @endif
-                @if ($isDemo)
-                    · <strong>ใช้ข้อมูลตัวอย่าง (DEMO)</strong>
-                @endif
-            </p>
-        @endif
     </div>
 
 </div>

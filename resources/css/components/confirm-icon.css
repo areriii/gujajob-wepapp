@@ -1,0 +1,27 @@
+/* ==========================================================================
+   Save Confirmation Icon — System-wide standard
+   Loaded in app layout AFTER per-module CSS (@yield('page-style')).
+   Every "ยืนยันการบันทึก" popup uses .save-confirm-icon + #icon-success so the
+   icon looks the same as MAT-001 (green circle, white check).
+   ========================================================================== */
+
+.confirm-overlay .confirm-icon.save-confirm-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #0ca678;
+    color: #ffffff;
+}
+
+.confirm-overlay .confirm-icon.save-confirm-icon svg {
+    width: 26px;
+    height: 26px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}

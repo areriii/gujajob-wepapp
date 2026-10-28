@@ -2,9 +2,6 @@ import { initSearchableSelects } from '../../components/searchable-select.js';
 
 const sidebarStorageKey = 'gujajob.sidebar.groupState';
 
-/** Detail rows shown per page. Pagination is presentation only: totals always cover every asset. */
-const ASSETS_PER_PAGE = 10;
-
 /** Dropdown value for "ทั้งหมด" (see forecast.blade.php); sent to the server as no filter. */
 const ALL_OPTION_VALUE = '__all__';
 
@@ -113,21 +110,8 @@ function thaiYear(ceYear) {
     return Number(ceYear) + 543;
 }
 
-/** "2026-09-14" → "14/09/2569" */
-function formatThaiDate(isoDate) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate ?? '');
-    return match ? `${match[3]}/${match[2]}/${Number(match[1]) + 543}` : '-';
-}
-
 function toNumber(value) {
     return value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
-}
-
-/** Inspect date as YYYY-MM-DD for sorting; falls back to the DD/MM/BBBB display date. */
-function inspectDateKey(asset) {
-    if (asset.inspect_date) return String(asset.inspect_date);
-    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(asset.acceptance_date ?? '');
-    return match ? `${Number(match[3]) - 543}-${match[2]}-${match[1]}` : null;
 }
 
 function filterValue(element) {
@@ -163,20 +147,6 @@ function forecastPeriodLabel(json) {
 // resources/css/components/sort-icon.css: the first click sorts ascending, clicking the active
 // ascending column sorts descending, and a new sort returns to page 1. Rows are sorted as a complete
 // list before pagination, so sorting never changes which assets or totals are included.
-
-const ASSET_COLUMNS = [
-    { key: 'sequence',                   label: 'ลำดับ',               type: 'number', className: 'forecast-center', value: (a) => a.sequence },
-    { key: 'asset_code',                 label: 'รหัสครุภัณฑ์',          type: 'text',                                 value: (a) => a.asset_code },
-    { key: 'category_name',              label: 'ชื่อครุภัณฑ์',          type: 'text',                                 value: (a) => a.category_name },
-    { key: 'category_group',             label: 'หมวดครุภัณฑ์',         type: 'text',                                 value: (a) => a.category_group },
-    { key: 'organization_name',          label: 'หน่วยงาน',             type: 'text',                                 value: (a) => a.organization_name },
-    { key: 'inspect_date',               label: 'วันที่ตรวจรับ',          type: 'text',   className: 'forecast-center', value: inspectDateKey },
-    { key: 'forecast_year',              label: 'ปีที่ครบกำหนดทดแทน',   type: 'number', className: 'forecast-center', value: (a) => toNumber(a.forecast_year) },
-    { key: 'acquisition_value',          label: 'มูลค่า',               type: 'number', className: 'forecast-num',    value: (a) => toNumber(a.acquisition_value) },
-    { key: 'accumulated_depreciation',   label: 'ค่าเสื่อมราคาสะสม',     type: 'number', className: 'forecast-num',    value: (a) => toNumber(a.accumulated_depreciation) },
-    { key: 'current_value',              label: 'มูลค่าคงเหลือ',         type: 'number', className: 'forecast-num',    value: (a) => toNumber(a.current_value) },
-    { key: 'predicted_replacement_cost', label: 'มูลค่าทดแทน (AI)',      type: 'number', className: 'forecast-num',    value: (a) => (a.prediction_basis === 'unavailable' ? null : toNumber(a.predicted_replacement_cost)) },
-];
 
 const YEAR_COLUMNS = [
     { key: 'year',            label: 'ปี',                          type: 'number',                               value: (y) => toNumber(y.year) },
@@ -256,13 +226,18 @@ function renderSummary(json) {
             <div class="ai-summary-item highlight">
                 <span>งบประมาณรวมที่คาดการณ์</span>
                 <strong>${formatMoney(json.total_forecast_budget)} บาท</strong>
+                <small class="forecast-period">มูลค่าตอนซื้อ + ${escapeHtml(json.increase_percent)}%</small>
             </div>
         </div>
     </div>`;
 }
 
-/** Yearly table. The total row always comes last and uses the totals calculated for every asset. */
-function renderYearTable(json, sort) {
+/**
+ * Yearly table. Each year links to its assets and "แสดงทั้งหมด" to every asset of the forecast period
+ * (forecast-assets.blade.php, in this tab; its ย้อนกลับ and the browser's back button show this result again).
+ * The total row always comes last.
+ */
+function renderYearTable(json, sort, assetsUrl) {
     const years = sortRows(Array.isArray(json.years) ? json.years : [], YEAR_COLUMNS, sort);
 
     let html = `<div class="forecast-section-title">ผลการพยากรณ์รายปี</div>
@@ -272,11 +247,15 @@ function renderYearTable(json, sort) {
 
     for (const y of years) {
         html += `<tr>
-            <td>พ.ศ. ${thaiYear(y.year)} <span class="year-ce">(ค.ศ. ${escapeHtml(y.year)})</span></td>
+            <td><a class="forecast-year-link" href="${escapeHtml(assetsUrl)}?year=${encodeURIComponent(y.year)}">พ.ศ. ${thaiYear(y.year)} <span class="year-ce">(ค.ศ. ${escapeHtml(y.year)})</span></a></td>
             <td class="forecast-center">${formatCount(y.asset_count)}</td>
             <td class="forecast-num">${formatMoney(y.forecast_budget)}</td>
         </tr>`;
     }
+
+    html += `<tr class="forecast-all-row">
+            <td colspan="3"><a class="forecast-year-link" href="${escapeHtml(assetsUrl)}">แสดงทั้งหมด</a></td>
+        </tr>`;
 
     html += `<tr class="forecast-total-row">
             <td>รวม</td>
@@ -288,123 +267,7 @@ function renderYearTable(json, sort) {
     return html;
 }
 
-/** Same page-number pattern as resources/views/components/app-pagination.blade.php. */
-function pageNumbers(current, last) {
-    if (last <= 5) return Array.from({ length: last }, (_, i) => i + 1);
-    if (current <= 3) return [1, 2, 3, 'ellipsis', last];
-    if (current >= last - 2) return [1, 'ellipsis', last - 2, last - 1, last];
-    return [1, 'ellipsis', current - 1, current, current + 1, 'ellipsis', last];
-}
-
-function renderPagination(current, last) {
-    const link = (page, label, ariaLabel) => `<button type="button" class="app-pagination-link" data-forecast-page="${page}" aria-label="${ariaLabel}">${label}</button>`;
-    const disabled = (label, ariaLabel) => `<span class="app-pagination-link is-disabled" aria-disabled="true" aria-label="${ariaLabel}">${label}</span>`;
-
-    let html = '<div class="app-pagination-actions">';
-    html += current > 1 ? link(current - 1, '‹', 'ย้อนกลับ') : disabled('‹', 'ย้อนกลับ');
-
-    for (const page of pageNumbers(current, last)) {
-        if (page === 'ellipsis') {
-            html += '<span class="app-pagination-ellipsis" aria-hidden="true">…</span>';
-        } else if (page === current) {
-            html += `<span class="app-pagination-link is-active" aria-current="page">${page}</span>`;
-        } else {
-            html += link(page, page, `หน้า ${page}`);
-        }
-    }
-
-    html += current < last ? link(current + 1, '›', 'ถัดไป') : disabled('›', 'ถัดไป');
-    return `${html}</div>`;
-}
-
-function renderCostCell(asset) {
-    if (asset.prediction_basis === 'unavailable' || asset.predicted_replacement_cost === null || asset.predicted_replacement_cost === undefined) {
-        return '<span class="forecast-cost-unavailable">ไม่สามารถพยากรณ์ได้</span>';
-    }
-    const suffix = asset.prediction_basis === 'asset_price_trend' ? ' *' : '';
-    return `${formatMoney(asset.predicted_replacement_cost)}${suffix}`;
-}
-
-/**
- * Candidate detail table for one page. `assets` is always the complete candidate list: it is sorted
- * first and only then cut into pages.
- */
-function renderAssetSection(assets, requestedPage, sort) {
-    const sorted = sortRows(assets, ASSET_COLUMNS, sort);
-    const lastPage = Math.max(1, Math.ceil(sorted.length / ASSETS_PER_PAGE));
-    const page = Math.min(Math.max(1, requestedPage), lastPage);
-    const offset = (page - 1) * ASSETS_PER_PAGE;
-    const pageAssets = sorted.slice(offset, offset + ASSETS_PER_PAGE);
-
-    let rows = '';
-    pageAssets.forEach((a) => {
-        const code = a.asset_code ?? '';
-        rows += `<tr>
-            <td class="forecast-center">${escapeHtml(a.sequence)}</td>
-            <td><a class="ass-code-link asset-code" href="/asset/ASS-003-manage-asset-registration?search_by=code&keyword=${encodeURIComponent(code)}">${escapeHtml(code || '-')}</a></td>
-            <td>${escapeHtml(a.category_name ?? '-')}</td>
-            <td>${escapeHtml(a.category_group ?? '-')}</td>
-            <td>${escapeHtml(a.organization_name ?? '-')}</td>
-            <td class="forecast-center">${escapeHtml(a.acceptance_date ?? '-')}</td>
-            <td class="forecast-center">พ.ศ. ${thaiYear(a.forecast_year)}</td>
-            <td class="forecast-num">${formatMoney(a.acquisition_value)}</td>
-            <td class="forecast-num">${formatMoney(a.accumulated_depreciation)}</td>
-            <td class="forecast-num">${formatMoney(a.current_value)}</td>
-            <td class="forecast-num ai-cost-cell">${renderCostCell(a)}</td>
-        </tr>`;
-    });
-
-    const hasFallback = assets.some((a) => a.prediction_basis === 'asset_price_trend');
-
-    return `
-        <div class="forecast-section-title">รายละเอียดครุภัณฑ์ที่คาดว่าจะทดแทน (ทั้งหมด ${formatCount(sorted.length)} รายการ)</div>
-        <div class="forecast-table-card">
-            <div class="forecast-table-scroll">
-                <table class="forecast-table forecast-candidate-table">
-                    <thead><tr>${ASSET_COLUMNS.map((column) => sortableHeader(column, sort, 'assets')).join('')}</tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-            <div class="table-footer forecast-table-footer">
-                <p class="app-pagination-summary">แสดง ${formatCount(offset + 1)}–${formatCount(offset + pageAssets.length)} จากทั้งหมด ${formatCount(sorted.length)} รายการ</p>
-                ${renderPagination(page, lastPage)}
-            </div>
-        </div>
-        ${hasFallback ? '<p class="forecast-basis-note">* หมวดที่ไม่มีข้อมูลราคาย้อนหลัง ประมาณจากมูลค่าของครุภัณฑ์ปรับด้วยอัตราการเปลี่ยนแปลงราคาเฉลี่ย</p>' : ''}`;
-}
-
-/** What each value column means; มูลค่าคงเหลือ and มูลค่าทดแทน (AI) answer different questions. */
-function renderValueNotes(json) {
-    const asOf = formatThaiDate(json.depreciation?.as_of_date);
-
-    return `
-    <div class="forecast-value-notes">
-        <p><strong>มูลค่าคงเหลือ</strong> = มูลค่า − ค่าเสื่อมราคาสะสม ณ วันที่ ${asOf} (หลักเกณฑ์เดียวกับทะเบียนคุมครุภัณฑ์: วิธีเส้นตรง มูลค่า ÷ อายุการใช้งาน คิดตามปีงบประมาณ เริ่มเดือนที่ตรวจรับ ถ้าตรวจรับหลังวันที่ 15 เริ่มเดือนถัดไป คงเหลือ 1 บาทเมื่อครบอายุ) ใช้กำหนดปีที่ครบกำหนดทดแทน</p>
-        <p><strong>มูลค่าทดแทน (AI)</strong> = ราคาจัดซื้อครุภัณฑ์ใหม่ชื่อครุภัณฑ์เดียวกันที่คาดการณ์ในปีที่ครบกำหนดทดแทน จากแนวโน้มราคาจัดซื้อย้อนหลัง (Ridge Regression) ไม่ได้คำนวณจากมูลค่าคงเหลือ</p>
-    </div>`;
-}
-
-function renderModelBadge(json) {
-    const m = json.model;
-    if (!m) return '';
-
-    const parts = [
-        `โมเดล: ${escapeHtml(m.name ?? 'AI')}`,
-        `ข้อมูลฝึกสอน: ${formatCount(m.training_records)} รายการ`,
-    ];
-    if (m.annual_price_growth_pct !== null && m.annual_price_growth_pct !== undefined) {
-        parts.push(`อัตราการเปลี่ยนแปลงราคาเฉลี่ย ${Number(m.annual_price_growth_pct).toFixed(2)}% ต่อปี`);
-    }
-    if (m.mape !== null && m.mape !== undefined && m.evaluation_year) {
-        parts.push(`MAPE (ทดสอบปี พ.ศ. ${thaiYear(m.evaluation_year)}): ${Number(m.mape).toFixed(2)}%`);
-    }
-    if (json.training_data_source === 'demo') {
-        parts.push('ข้อมูลตัวอย่าง (DEMO)');
-    }
-    return `<div class="forecast-model-badge">${parts.join(' · ')}</div>`;
-}
-
-function renderForecast(json, assets, container) {
+function renderForecast(json, container, assetsUrl) {
     const warnings = Array.isArray(json.warnings) ? json.warnings : [];
 
     let html = renderSummary(json);
@@ -420,10 +283,7 @@ function renderForecast(json, assets, container) {
         return;
     }
 
-    html += `<div class="forecast-year-table-wrap" id="forecastYearSection">${renderYearTable(json, noSort())}</div>`;
-    html += `<div class="forecast-asset-detail-wrap" id="forecastAssetSection">${renderAssetSection(assets, 1, noSort())}</div>`;
-    html += renderValueNotes(json);
-    html += renderModelBadge(json);
+    html += `<div class="forecast-year-table-wrap" id="forecastYearSection">${renderYearTable(json, noSort(), assetsUrl)}</div>`;
 
     container.innerHTML = html;
 }
@@ -449,10 +309,30 @@ function keepDropdownListsInViewport(root) {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
+/** The last calculation embedded by the server for ?restore=1 (forecast.blade.php), or null. */
+function restoredForecast() {
+    try {
+        const json = JSON.parse(document.getElementById('forecastRestored')?.textContent ?? 'null');
+        return json?.success ? json : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Marks this page's address with ?restore=1 once a result is shown, so coming back to it with the browser's
+ * back button (the year links open in this tab) shows the result again instead of an empty page.
+ */
+function rememberResultInAddress() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('restore') === '1') return;
+    url.searchParams.set('restore', '1');
+    window.history.replaceState(window.history.state, '', url);
+}
+
 function initializeForecastPage() {
     const root     = document.getElementById('forecastPage');
     const calcBtn  = document.getElementById('forecastCalcBtn');
-    const printBtn = document.getElementById('forecastPrintBtn');
     const resultEl = document.getElementById('forecastResult');
 
     if (!root || !calcBtn || !resultEl) return;
@@ -460,22 +340,22 @@ function initializeForecastPage() {
     const yearsEl    = document.getElementById('forecastYears');
     const catGroupEl = document.getElementById('forecastCatGroup');
     const orgIdEl    = document.getElementById('forecastOrgId');
+    const percentEl  = document.getElementById('forecastPercent');
 
     let latestResult = null;
-    // Complete candidate list in the order returned by the server; `sequence` is the ลำดับ column.
-    let latestAssets = [];
-    let assetSort = noSort();
     let yearSort = noSort();
-    let assetPage = 1;
 
     keepDropdownListsInViewport(root);
+
+    latestResult = restoredForecast();
+    if (latestResult) {
+        renderForecast(latestResult, resultEl, root.dataset.assetsUrl);
+    }
 
     calcBtn.addEventListener('click', async () => {
         calcBtn.disabled = true;
         calcBtn.textContent = 'กำลังคำนวณ...';
-        if (printBtn) printBtn.disabled = true;
         latestResult = null;
-        latestAssets = [];
         resultEl.innerHTML = '<p class="forecast-loading-msg">กำลังวิเคราะห์ข้อมูลและพยากรณ์...</p>';
 
         const orgValue = filterValue(orgIdEl);
@@ -484,6 +364,8 @@ function initializeForecastPage() {
             // หมวดครุภัณฑ์ name (ASSET_CATEGORY.asscat_group); null = ทั้งหมด
             filter_cat_group: filterValue(catGroupEl),
             filter_org_id:    orgValue !== null ? parseInt(orgValue, 10) : null,
+            // งบประมาณทดแทน = มูลค่าตอนซื้อ + this percentage; the server validates it (0–1000)
+            increase_percent: (percentEl?.value ?? '').trim() === '' ? null : Number(percentEl.value),
         };
 
         try {
@@ -506,12 +388,9 @@ function initializeForecastPage() {
             }
 
             latestResult = json;
-            latestAssets = (Array.isArray(json.assets) ? json.assets : []).map((asset, index) => ({ ...asset, sequence: index + 1 }));
-            assetSort = noSort();
             yearSort = noSort();
-            assetPage = 1;
-            renderForecast(json, latestAssets, resultEl);
-            if (printBtn) printBtn.disabled = false;
+            renderForecast(json, resultEl, root.dataset.assetsUrl);
+            rememberResultInAddress();
         } catch {
             resultEl.innerHTML = '<p class="forecast-error-msg">ไม่สามารถเชื่อมต่อบริการได้ กรุณาลองอีกครั้ง</p>';
         } finally {
@@ -520,40 +399,18 @@ function initializeForecastPage() {
         }
     });
 
-    // Sorting and paging only re-render their own table; the summary and totals stay as calculated.
+    // Sorting only re-renders the yearly table; the summary and totals stay as calculated.
     resultEl.addEventListener('click', (event) => {
-        if (!latestResult) return;
+        const sortButton = event.target.closest('[data-sort-table="years"][data-sort-key]');
+        const section = document.getElementById('forecastYearSection');
+        if (!latestResult || !sortButton || !section) return;
 
-        const sortButton = event.target.closest('[data-sort-key]');
-        if (sortButton) {
-            const key = sortButton.dataset.sortKey;
-            const table = sortButton.dataset.sortTable;
-            const section = document.getElementById(table === 'years' ? 'forecastYearSection' : 'forecastAssetSection');
-            if (!section) return;
-
-            if (table === 'years') {
-                yearSort = nextSort(yearSort, key);
-                section.innerHTML = renderYearTable(latestResult, yearSort);
-            } else {
-                assetSort = nextSort(assetSort, key);
-                assetPage = 1;
-                section.innerHTML = renderAssetSection(latestAssets, assetPage, assetSort);
-            }
-            section.querySelector(`[data-sort-table="${table}"][data-sort-key="${key}"]`)?.focus();
-            return;
-        }
-
-        const pageButton = event.target.closest('[data-forecast-page]');
-        const assetSection = document.getElementById('forecastAssetSection');
-        if (!pageButton || !assetSection) return;
-
-        assetPage = Number(pageButton.dataset.forecastPage);
-        assetSection.innerHTML = renderAssetSection(latestAssets, assetPage, assetSort);
+        const key = sortButton.dataset.sortKey;
+        yearSort = nextSort(yearSort, key);
+        section.innerHTML = renderYearTable(latestResult, yearSort, root.dataset.assetsUrl);
+        section.querySelector(`[data-sort-table="years"][data-sort-key="${key}"]`)?.focus();
     });
 
-    printBtn?.addEventListener('click', () => {
-        window.open(root.dataset.printUrl, '_blank');
-    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
