@@ -628,34 +628,45 @@ textarea {
     padding-right: 14px;
 }
 
+/*
+ * Columns 1-6 add up to 88% so the fixed-width action column (7) always has room:
+ * 0.88 x table width + 104px stays within the table down to its 880px min-width.
+ * Any leftover width goes to the action column, which is the only px column.
+ */
 .withdraw-table th:nth-child(1),
 .withdraw-table td:nth-child(1) {
-    width: 18%;
+    width: 15%;
 }
 
 .withdraw-table th:nth-child(2),
 .withdraw-table td:nth-child(2) {
-    width: 15%;
+    width: 12%;
 }
 
 .withdraw-table th:nth-child(3),
 .withdraw-table td:nth-child(3) {
-    width: 17%;
+    width: 16%;
 }
 
 .withdraw-table th:nth-child(4),
 .withdraw-table td:nth-child(4) {
-    width: 22%;
+    width: 20%;
 }
 
 .withdraw-table th:nth-child(5),
 .withdraw-table td:nth-child(5) {
-    width: 14%;
+    width: 13%;
 }
 
 .withdraw-table th:nth-child(6),
 .withdraw-table td:nth-child(6) {
-    width: 14%;
+    width: 12%;
+}
+
+/* Edit + delete icons: 2 x 30px + 8px gap + 2 x 14px padding = 96px */
+.withdraw-table th:nth-child(7),
+.withdraw-table td:nth-child(7) {
+    width: 104px;
 }
 
 .detail-btn {
