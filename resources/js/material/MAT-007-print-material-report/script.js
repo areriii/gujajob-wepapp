@@ -153,7 +153,13 @@ function initializeMaterialReportPage() {
             document.getElementById('orgError').textContent = '';
             const orgId = mainDepartmentId.value;
             if (!orgId || orgId === '0') {
-                document.getElementById('orgError').textContent = 'กรุณากรอกข้อมูล';
+                // ช่องนี้เก็บ id ไว้ใน hidden input ซึ่งจะถูกตั้งค่าก็ต่อเมื่อกดเลือกจากรายการ
+                // ถ้าผู้ใช้พิมพ์ชื่อเองแล้วไม่ได้เลือก (หรือเบราว์เซอร์ autofill มาให้) ช่องจะดูเหมือนกรอกแล้ว
+                // แต่ยังไม่มี id จึงต้องบอกให้ชัดว่าต้อง "เลือกจากรายการ" ไม่ใช่แค่ "กรอกข้อมูล"
+                document.getElementById('orgError').textContent = mainDepartment.value.trim() !== ''
+                    ? 'กรุณาเลือกหน่วยงานจากรายการที่ระบบแสดง'
+                    : 'กรุณากรอกข้อมูล';
+                mainDepartment.focus();
                 return;
             }
             const params = new URLSearchParams({ org_id: orgId });

@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->redirectGuestsTo(fn () => route('login'));
+
+        // เสิร์ฟผ่าน Cloudflare Tunnel ตอนเดโม: ถ้าไม่เชื่อ proxy Laravel จะมองว่าเป็น http
+        // แล้วสร้างลิงก์/redirect กลับไปเป็น localhost ทำให้หน้าเว็บพัง
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

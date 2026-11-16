@@ -207,6 +207,35 @@ function initPreviewButton() {
         openTestPopup(await response.text());
     };
 
+    /**
+     * ช่องค้นหาพวกนี้เก็บค่าจริงไว้ใน hidden input ซึ่งตั้งค่าเมื่อกดเลือกจากรายการเท่านั้น
+     * ถ้าผู้ใช้พิมพ์เองแล้วไม่ได้เลือก ช่องจะดูเหมือนกรอกแล้วแต่ยังไม่มีค่า จึงต้องแยกข้อความ
+     */
+    function showFieldError(errorId, inputId, currentValue) {
+        const target = document.getElementById(errorId);
+        if (!target) return;
+
+        if (currentValue) {
+            target.textContent = '';
+            return;
+        }
+
+        const input = document.getElementById(inputId);
+        target.textContent = input && input.value.trim() !== ''
+            ? 'กรุณาเลือกจากรายการที่ระบบแสดง'
+            : 'กรุณากรอกข้อมูล';
+    }
+
+    // ล้างข้อความเตือนทันทีที่ผู้ใช้เริ่มแก้ไข
+    [['categorySearch', 'categoryError'], ['assetSearch', 'assetError'],
+     ['orgSearch', 'orgError'], ['subOrgSearch', 'subOrgError'],
+     ['fiscalYear', 'fiscalYearError']].forEach(([inputId, errorId]) => {
+        document.getElementById(inputId)?.addEventListener('input', () => {
+            const target = document.getElementById(errorId);
+            if (target) target.textContent = '';
+        });
+    });
+
     previewBtn?.addEventListener('click', async () => {
         const registerConditions = document.getElementById('registerConditions');
         const isRegisterType = registerConditions.style.display !== 'none';
@@ -214,7 +243,12 @@ function initPreviewButton() {
         if (isRegisterType) {
             const categoryId = document.getElementById('categoryId').value;
             const assetId = document.getElementById('assetId').value;
-            if (!categoryId || !assetId) return;
+            if (!categoryId || !assetId) {
+                // เดิมแค่ return เฉย ๆ ผู้ใช้กดพรีวิวแล้วไม่มีอะไรเกิดขึ้นเลย เหมือนปุ่มเสีย
+                showFieldError('categoryError', 'categorySearch', categoryId);
+                showFieldError('assetError', 'assetSearch', assetId);
+                return;
+            }
 
             const params = new URLSearchParams();
             params.set('category_id', categoryId);
@@ -236,7 +270,12 @@ function initPreviewButton() {
             const fiscalYear = document.getElementById('fiscalYear').value;
             const orgId = document.getElementById('orgId').value;
             const subOrgId = document.getElementById('subOrgId').value;
-            if (!fiscalYear) return;
+            if (!fiscalYear.trim()) {
+                const target = document.getElementById('fiscalYearError');
+                if (target) target.textContent = 'กรุณากรอกข้อมูล';
+                document.getElementById('fiscalYear')?.focus();
+                return;
+            }
 
             const params = new URLSearchParams();
             params.append('fiscal_year', fiscalYear);
