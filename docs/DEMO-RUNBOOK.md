@@ -17,6 +17,24 @@
 
 ---
 
+## ทางลัด: เปิดทุกอย่างด้วยคำสั่งเดียว
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Users\R\Desktop\gujajob-wepapp\scripts\start-demo.ps1 -Watch
+```
+
+สคริปต์จะเช็ก Oracle, เปิด AI service, Laravel, Cloudflare Tunnel, ตั้ง `APP_URL` ให้เอง
+แล้ว**เฝ้าทุก 30 วินาที ถ้าตัวไหนตายจะเปิดใหม่ให้อัตโนมัติ** เปิดหน้าต่างนี้ค้างไว้ตอนเดโม
+
+URL ปัจจุบันอ่านได้ที่ `storage\app\demo-runtime\current-url.txt`
+
+> ถ้าเครื่องดับหรือ sleep สคริปต์ตายไปด้วย ต้องมากดเปิดใหม่เอง
+> และ URL ของ trycloudflare จะเปลี่ยนทุกครั้งที่เปิด tunnel ใหม่เสมอ
+
+ถ้าอยากทำเองทีละขั้น หรือสคริปต์มีปัญหา ให้ทำตามลำดับด้านล่าง
+
+---
+
 ## ลำดับการเปิดระบบก่อนเดโม
 
 ทำตามลำดับนี้ ห้ามข้าม
