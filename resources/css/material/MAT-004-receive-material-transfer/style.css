@@ -750,6 +750,21 @@ textarea {
     margin-bottom: 4px;
 }
 
+/* คู่มือหน้า 39 แสดง "ข้อมูลคลังวัสดุ" เป็นกล่องสูงคงที่ที่เลื่อนดูได้
+   ของจริงดึงประวัติการรับเข้าได้ถึง 50 แถว และใบเบิกหนึ่งใบมีวัสดุได้ถึง 10 รายการ
+   ถ้าปล่อยให้ยาวตามจำนวนแถว การ์ดนี้จะดันหน้ายาวจนต้องเลื่อนหาปุ่มยืนยัน */
+.mat004-stock-card .mat004-table-wrap {
+    overflow-y: auto;
+    max-height: 260px;
+}
+
+/* หัวตารางค้างไว้ตอนเลื่อน ไม่งั้นเลื่อนไปสองสามแถวก็ไม่รู้แล้วว่าคอลัมน์ไหนคืออะไร */
+.mat004-stock-card .mat004-stock-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
 /* ── Tables (items + stock share base styles) ───────────────── */
 .mat004-items-table,
 .mat004-stock-table {
