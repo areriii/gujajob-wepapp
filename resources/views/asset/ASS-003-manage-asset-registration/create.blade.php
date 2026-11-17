@@ -51,8 +51,11 @@
                     <div class="form-field">
                            <label for="assCode">รหัสครุภัณฑ์ประจำหน่วยงาน</label>
                            <input id="assCode" type="text" maxlength="15"
-                               placeholder="-" value="{{ old('ass_code') }}" readonly>
+                               placeholder="กำหนดตอนรับลงทะเบียนหน่วยงาน" value="{{ old('ass_code') }}" readonly>
                            <input type="hidden" name="ass_code" value="{{ old('ass_code') }}">
+                           <span class="field-hint" style="color:#6b7280;font-size:11px;">
+                               ไม่ต้องกรอกตอนนี้ ระบบจะกำหนดให้ที่หน้ารับครุภัณฑ์ลงทะเบียนหน่วยงาน (ASS-005)
+                           </span>
                         @error('ass_code')<span class="field-error" style="color:#dc2626;font-size:11px;">{{ $message }}</span>@enderror
                     </div>
                 </div>

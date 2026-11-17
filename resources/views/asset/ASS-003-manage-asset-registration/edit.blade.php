@@ -30,9 +30,12 @@
 
                 <div class="form-row one-col short-row">
                     <div class="form-field">
-                        <label for="assCode">รหัสครุภัณฑ์ประจำหน่วยงาน <span class="required">*</span></label>
+                        <label for="assCode">รหัสครุภัณฑ์ประจำหน่วยงาน</label>
                         <input id="assCode" name="ass_code" type="text" maxlength="15"
                                value="{{ old('ass_code', $asset->ass_code ?? '') }}" autocomplete="off">
+                        <span class="field-hint" style="color:#6b7280;font-size:11px;">
+                            ครุภัณฑ์ที่ยังไม่ได้รับลงทะเบียนหน่วยงานจะยังไม่มีรหัสนี้ ระบบจะกำหนดให้ที่หน้ารับครุภัณฑ์ลงทะเบียนหน่วยงาน (ASS-005)
+                        </span>
                         @error('ass_code')<span class="field-error" style="color:#dc2626;font-size:11px;">{{ $message }}</span>@enderror
                     </div>
                 </div>

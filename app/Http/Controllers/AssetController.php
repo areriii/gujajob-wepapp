@@ -253,7 +253,7 @@ class AssetController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'ass_code'         => ['required', 'string', 'max:15'],
+            'ass_code'         => ['nullable', 'string', 'max:15'],
             'asscat_id'        => ['required', 'integer', 'exists:oracle.ASSET_CATEGORY,id'],
             'ass_desc'         => ['nullable', 'string', 'max:500'],
             'ass_model'        => ['nullable', 'string', 'max:100'],
@@ -271,7 +271,6 @@ class AssetController extends Controller
             'asset_images'     => ['nullable', 'array', 'max:3'],
             'asset_images.*'   => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif', 'max:1024'],
         ], [
-            'ass_code.required'  => 'กรุณากรอกรหัสครุภัณฑ์ประจำหน่วยงาน',
             'ass_code.max'       => 'รหัสครุภัณฑ์ประจำหน่วยงานต้องไม่เกิน 15 ตัวอักษร',
             'asscat_id.required' => 'กรุณาเลือกประเภทครุภัณฑ์',
             'asscat_id.exists'   => 'ประเภทครุภัณฑ์ที่เลือกไม่ถูกต้อง',
@@ -280,13 +279,18 @@ class AssetController extends Controller
             'asset_images.*.max' => 'ไฟล์รูปภาพต้องมีขนาดไม่เกิน 1 MB ต่อไฟล์',
         ]);
 
-        $newCode = trim($validated['ass_code']);
-        $duplicate = DB::connection('oracle')->table('ASSET')
-            ->whereRaw('UPPER(ass_code) = UPPER(?)', [$newCode])
-            ->exists();
-        if ($duplicate) {
-            return back()->withInput()
-                ->withErrors(['ass_code' => 'รหัสทะเบียนครุภัณฑ์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น']);
+        // รหัสประจำหน่วยงานจะถูกกำหนดตอนรับครุภัณฑ์ลงทะเบียนหน่วยงาน (ASS-005)
+        // ตอนบันทึกทะเบียนใหม่จึงยังว่างได้ ตรวจรหัสซ้ำเฉพาะเมื่อมีรหัสจริง
+        $newCode = trim((string) ($validated['ass_code'] ?? '')) ?: null;
+
+        if ($newCode !== null) {
+            $duplicate = DB::connection('oracle')->table('ASSET')
+                ->whereRaw('UPPER(ass_code) = UPPER(?)', [$newCode])
+                ->exists();
+            if ($duplicate) {
+                return back()->withInput()
+                    ->withErrors(['ass_code' => 'รหัสทะเบียนครุภัณฑ์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น']);
+            }
         }
 
         try {
@@ -417,7 +421,7 @@ class AssetController extends Controller
         $asset = Asset::query()->whereIn('org_id', $visibleOrgIds)->findOrFail($id);
 
         $validated = $request->validate([
-            'ass_code'           => ['required', 'string', 'max:15'],
+            'ass_code'           => ['nullable', 'string', 'max:15'],
             'asscat_id'          => ['required', 'integer', 'exists:oracle.ASSET_CATEGORY,id'],
             'ass_desc'           => ['nullable', 'string', 'max:500'],
             'ass_model'          => ['nullable', 'string', 'max:100'],
@@ -437,7 +441,6 @@ class AssetController extends Controller
             'remove_image_ids'   => ['nullable', 'array'],
             'remove_image_ids.*' => ['integer'],
         ], [
-            'ass_code.required'  => 'กรุณากรอกรหัสครุภัณฑ์ประจำหน่วยงาน',
             'ass_code.max'       => 'รหัสครุภัณฑ์ประจำหน่วยงานต้องไม่เกิน 15 ตัวอักษร',
             'asscat_id.required' => 'กรุณาเลือกประเภทครุภัณฑ์',
             'asscat_id.exists'   => 'ประเภทครุภัณฑ์ที่เลือกไม่ถูกต้อง',
@@ -449,14 +452,18 @@ class AssetController extends Controller
         ]);
 
         // Check duplicate ass_code (exclude self — PART H3)
-        $newCode = trim($validated['ass_code']);
-        $duplicate = DB::connection('oracle')->table('ASSET')
-            ->whereRaw('UPPER(ass_code) = UPPER(?)', [$newCode])
-            ->where('id', '!=', $id)
-            ->exists();
-        if ($duplicate) {
-            return back()->withInput()
-                ->withErrors(['ass_code' => 'รหัสทะเบียนครุภัณฑ์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น']);
+        // ครุภัณฑ์ที่ยังไม่ผ่าน ASS-005 จะยังไม่มีรหัสประจำหน่วยงาน แก้ไขข้อมูลอื่นได้โดยไม่ต้องตั้งรหัส
+        $newCode = trim((string) ($validated['ass_code'] ?? '')) ?: null;
+
+        if ($newCode !== null) {
+            $duplicate = DB::connection('oracle')->table('ASSET')
+                ->whereRaw('UPPER(ass_code) = UPPER(?)', [$newCode])
+                ->where('id', '!=', $id)
+                ->exists();
+            if ($duplicate) {
+                return back()->withInput()
+                    ->withErrors(['ass_code' => 'รหัสทะเบียนครุภัณฑ์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น']);
+            }
         }
 
         try {
