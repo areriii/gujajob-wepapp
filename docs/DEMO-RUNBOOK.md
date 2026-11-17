@@ -92,6 +92,7 @@ php artisan config:clear
 | **MAT-006 ตั้งยอดคงเหลือ** | `/material/MAT-006-record-balance-setting` | **คอลัมน์ AI ทำงาน (ประวัติ 24 เดือน)** |
 | MAT-007 พิมพ์รายงานวัสดุ | `/material/MAT-007-print-material-report` | PDF / Excel |
 | **ASS-003 พยากรณ์งบประมาณ** | `/asset/ASS-003-manage-asset-registration/replacement-forecast` | **ครุภัณฑ์ 53 รายการ** |
+| ASS-002 ข้อมูลผู้ประกอบการ | `/asset/ASS-002-manage-supplier-information` | 15 ราย ครบ 5 ประเภท / 10 จังหวัด |
 | ASS-006 แจ้งขอจำหน่าย | `/asset/ASS-006-request-asset-disposal` | 8 ใบ ครบทุกสถานะ |
 | ASS-007 อนุมัติการจำหน่าย | `/asset/ASS-007-approve-asset-disposal` | 3 ใบรออนุมัติ |
 | ASS-008 บันทึกผลการจำหน่าย | `/asset/ASS-008-record-asset-disposal-result` | 2 ใบรอบันทึก / 2 ใบจบแล้ว |
@@ -199,6 +200,7 @@ seed ที่ต้องรันเพิ่มหลังชุดหลั
 ```
 seed_mat002_demo_branch.sql       ใบรับวัสดุในสายงานของ user01
 seed_mat003_withdraw_history.sql  ประวัติเบิก/รับโอน 24 เดือน (จำเป็นสำหรับคอลัมน์ AI ใน MAT-006)
+seed_ass002_dealer_demo.sql       ผู้ประกอบการ 15 ราย ครบทุกประเภท สำหรับ ASS-002
 seed_ass006_disposal_demo.sql     ใบแจ้งขอจำหน่าย 8 ใบ สำหรับ ASS-006/007/008
 ```
 
