@@ -80,6 +80,13 @@
                 <div class="readonly-notice" style="margin:12px 0;padding:10px 14px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:13px;color:#92400e;">
                     ปีงบประมาณ {{ $fiscalYear }} เป็นปีที่ผ่านมา — ดูได้อย่างเดียว ไม่สามารถแก้ไขได้
                 </div>
+            @elseif (! $canAdjust)
+                {{-- ยอดคงเหลือเก็บแยกตามหน่วยงาน ถ้าเลือก "ทุกหน่วยงาน" ระบบไม่รู้ว่าจะบันทึกลงคลังไหน
+                     จึงซ่อนปุ่มแก้ไขไว้ ก่อนหน้านี้ไม่มีข้อความบอก ผู้ใช้จึงเข้าใจว่าหน้าจอเสีย --}}
+                <div class="readonly-notice" style="margin:12px 0;padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;font-size:13px;color:#1e40af;">
+                    กำลังแสดงยอดรวมของทุกหน่วยงาน — <strong>เลือกหน่วยงาน</strong> ก่อนจึงจะแก้ไขยอดคงเหลือได้
+                    เพราะยอดคงเหลือเก็บแยกตามหน่วยงาน
+                </div>
             @endif
 
             <div class="list-title" style="display:flex;align-items:center;gap:12px;justify-content:space-between;">
