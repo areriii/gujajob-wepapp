@@ -138,11 +138,16 @@
 }
 
 .forecast-candidate-table th:nth-child(1)  { width: 5.5%; }  /* ลำดับ */
-.forecast-candidate-table th:nth-child(2)  { width: 11%; }   /* รหัสครุภัณฑ์ (codes up to 15 characters stay on one line) */
+.forecast-candidate-table th:nth-child(2)  { width: 11%; }   /* รหัสครุภัณฑ์ */
 .forecast-candidate-table th:nth-child(3)  { width: 12%; }   /* ชื่อครุภัณฑ์ */
 
+/* ครุภัณฑ์ที่รับลงทะเบียนหน่วยงานแล้วจะแสดง "รหัสประเภท<เว้นวรรค>รหัสประจำหน่วยงาน"
+   ยาวเกินความกว้างคอลัมน์ ถ้าบังคับบรรทัดเดียวจะล้นไปทับคอลัมน์ชื่อครุภัณฑ์
+   ปล่อยให้ตัดเป็นสองบรรทัดตรงช่องว่าง */
 .forecast-candidate-table td:nth-child(2) {
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: break-word;
+    line-height: 1.35;
 }
 .forecast-candidate-table th:nth-child(4)  { width: 11%; }   /* หมวดครุภัณฑ์ */
 .forecast-candidate-table th:nth-child(5)  { width: 11%; }   /* หน่วยงาน */
