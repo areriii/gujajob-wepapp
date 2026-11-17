@@ -663,31 +663,30 @@ textarea {
     filter: none !important;
 }
 
-/* ปุ่มย้อนกลับท้ายการ์ด ใช้คลาสเดียวกับหน้ารายละเอียดอื่นในโมดูลวัสดุ (MAT-001/MAT-002)
-   ไม่ใส่เส้นคั่นด้านบนเหมือนหน้าอื่น เพราะ .table-footer มีพื้นเทากับเส้นคั่นให้อยู่แล้ว */
+/* ปุ่มย้อนกลับท้ายการ์ด ใช้คลาสและระยะเดียวกับหน้าฟอร์มอื่นในโมดูลวัสดุ (MAT-001/MAT-002)
+   รวมถึงเส้นคั่นด้านบน เพื่อให้หน้าตาเหมือนกันทุกหน้า */
 .form-actions {
-    margin-top: 18px;
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid #e5e7eb;
     display: flex;
     justify-content: flex-end;
     gap: 14px;
 }
 
+/* ใส่เฉพาะสีกับเส้นขอบ ส่วนความสูง/ระยะขอบในให้ components/form-buttons.css คุม
+   (โหลดทีหลังทั้งระบบ เพื่อให้ปุ่มทุกหน้าสูงเท่ากัน)
+   ใช้ค่าสีตรง ๆ ไม่ใช้ var(--danger) เพราะหน้านี้ไม่ได้ประกาศตัวแปรนั้นไว้
+   ถ้าใช้ตัวแปรที่ไม่มีค่า ทั้ง border และ color จะใช้ไม่ได้ ปุ่มจะกลายเป็นข้อความเปล่า */
 .cancel-btn {
-    height: 40px;
-    min-width: 72px;
-    padding: 0 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1.5px solid var(--danger);
+    border: 1.5px solid #ef4444;
     border-radius: 4px;
     background: #ffffff;
-    color: var(--danger);
+    color: #ef4444;
     text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
+    line-height: 1;
 }
 
 .cancel-btn:hover {
-    background: #fef2f2;
+    background: #fff5f5;
 }
