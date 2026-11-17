@@ -37,7 +37,21 @@ Get-Service OracleServiceORCL, OracleOraDB19Home1TNSListener
 
 > ปกติไม่ต้องทำแล้ว เพราะสั่ง `save state` ไว้ให้เปิดเองอัตโนมัติ
 
-### 2. เปิดเว็บเซิร์ฟเวอร์
+### 2. เปิด AI service (หน้าต่างใหม่) — ห้ามข้าม
+
+```powershell
+cd C:\Users\R\Desktop\gujajob-wepapp\ai-service
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+เช็กว่าขึ้นแล้ว: เปิด <http://127.0.0.1:8001/health> ต้องได้ `{"status":"ok"}`
+
+> **ถ้าไม่เปิดตัวนี้ หน้าเว็บจะไม่ error แต่ AI จะเงียบ ๆ ตกไปใช้ค่าเฉลี่ยแทน**
+> คอลัมน์ "จำนวนเฉลี่ยในการเบิกต่อเดือน" ใน MAT-006 ยังมีตัวเลขอยู่ แต่หมายเหตุใต้ตาราง
+> จะเปลี่ยนจาก "AI (Ridge Regression)..." เป็น "...ใช้งาน AI Service ไม่ได้"
+> ซึ่งถ้าอาจารย์อ่านเจอจะกลายเป็นว่าส่วน AI ไม่ทำงาน
+
+### 3. เปิดเว็บเซิร์ฟเวอร์ (หน้าต่างใหม่)
 
 ```powershell
 cd C:\Users\R\Desktop\gujajob-wepapp
@@ -46,7 +60,7 @@ php artisan serve --host=127.0.0.1 --port=8000
 
 เปิดค้างไว้ อย่าปิดหน้าต่างนี้
 
-### 3. เปิด Cloudflare Tunnel (หน้าต่างใหม่)
+### 4. เปิด Cloudflare Tunnel (หน้าต่างใหม่)
 
 ```powershell
 & "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://127.0.0.1:8000
@@ -54,7 +68,7 @@ php artisan serve --host=127.0.0.1 --port=8000
 
 **URL จะเปลี่ยนทุกครั้งที่เปิดใหม่** มองหาบรรทัดที่ขึ้นว่า `https://xxxx.trycloudflare.com`
 
-### 4. ตั้ง APP_URL ให้ตรงกับ URL ที่ได้
+### 5. ตั้ง APP_URL ให้ตรงกับ URL ที่ได้
 
 แก้ `.env` บรรทัด `APP_URL=` เป็น URL ที่เพิ่งได้ แล้วสั่ง
 
@@ -72,7 +86,10 @@ php artisan config:clear
 |---|---|---|
 | MAT-001 จัดการวัสดุ | `/material/MAT-001-manage-material-items` | 101 รายการ |
 | MAT-002 รับวัสดุเข้าคลัง | `/material/MAT-002-record-material-receiving` | 100 ใบรับ / 199 รายการ |
-| MAT-006 ตั้งยอดคงเหลือ | `/material/MAT-006-record-balance-setting` | 199 ยอดคงเหลือ |
+| MAT-003 เบิกวัสดุ | `/material/MAT-003-withdraw-material` | 53 ใบ (รออนุมัติ 2 / ไม่อนุมัติ 1) |
+| MAT-004 รับโอนวัสดุ | `/material/MAT-004-receive-material-transfer` | 50 ใบ (รอรับโอน 4) |
+| MAT-005 คุมทะเบียนวัสดุ | `/material/MAT-005-material-register` | มีประวัติเคลื่อนไหวแล้ว |
+| **MAT-006 ตั้งยอดคงเหลือ** | `/material/MAT-006-record-balance-setting` | **คอลัมน์ AI ทำงาน (ประวัติ 24 เดือน)** |
 | MAT-007 พิมพ์รายงานวัสดุ | `/material/MAT-007-print-material-report` | PDF / Excel |
 | **ASS-003 พยากรณ์งบประมาณ** | `/asset/ASS-003-manage-asset-registration/replacement-forecast` | **ครุภัณฑ์ 53 รายการ** |
 | ASS-006 แจ้งขอจำหน่าย | `/asset/ASS-006-request-asset-disposal` | 8 ใบ ครบทุกสถานะ |
@@ -125,13 +142,35 @@ php artisan config:clear
 
 ตารางเหล่านี้ไม่มีข้อมูล เพราะ dump ที่กู้มาไม่มีข้อมูลส่วนนี้
 
-- `MATERIAL_WITHDRAWN` / `MATERIAL_WITHDRAWN_LIST` (การเบิกวัสดุ MAT-003)
-- `MATERIAL_INSPECTION` / `MATERIAL_INSPECTION_LIST` (การรับโอน MAT-004)
+ตอนนี้ไม่มีตารางหลักที่ว่างแล้ว เติมครบเมื่อ 2026-11-17
 
-ถ้าจะเดโมหน้าพวกนี้ ต้อง **สร้างรายการสดหน้าชั้น** หรือบอกให้เตรียม seed เพิ่ม
+| ตาราง | เติมด้วย |
+|---|---|
+| `ASSET_SELLING` / `_LIST` | `seed_ass006_disposal_demo.sql` |
+| `MATERIAL_WITHDRAWN` / `_LIST` | `seed_mat003_withdraw_history.sql` |
+| `MATERIAL_INSPECTION` / `_LIST` | `seed_mat003_withdraw_history.sql` |
 
-(`ASSET_SELLING` เติมแล้วเมื่อ 2026-11-17 ดูหัวข้อ ASS-006/007/008 ด้านบน
-ส่วน `DEALER` มี 5 รายการ พอสำหรับหน้า MAT-002)
+`DEALER` มี 5 รายการ พอสำหรับหน้า MAT-002
+
+---
+
+## ส่วนที่ใช้ AI — ต้องเช็กก่อนพรีเซนต์
+
+ระบบมีสองจุดที่เรียก AI service ถ้า service ไม่ขึ้น **หน้าเว็บจะไม่ฟ้อง error** แต่จะเงียบ ๆ
+เปลี่ยนไปใช้วิธีคำนวณสำรองแทน ต้องเช็กจากข้อความกำกับว่าใช้ AI จริง
+
+| หน้า | จุดที่ใช้ AI | ต้องเห็นข้อความว่า |
+|---|---|---|
+| MAT-006 ตั้งยอดคงเหลือ | คอลัมน์ "จำนวนเฉลี่ยในการเบิกต่อเดือน" | "AI (Ridge Regression) พยากรณ์ยอดเบิกเดือนถัดไปจากประวัติการเบิก 24 เดือน" |
+| ASS-003 พยากรณ์งบประมาณ | มูลค่าทดแทนรายปี | ได้ 7 รายการ / 907,200.00 บาท |
+
+นอกจากนี้ MAT-003 มีปุ่ม **"แนะนำจากประวัติการเบิก"** ซึ่งคำนวณใน Laravel (ไม่ได้เรียก AI service)
+ใช้กฎความสัมพันธ์จากประวัติการเบิกจริง ถ้าใส่ MAT-1001 กับ MAT-1002 ในใบเบิก ระบบจะแนะนำ 5 รายการ
+ความเชื่อมั่น 100% สองรายการ (MAT-1004, MAT-1005 ที่เบิกคู่กันทุกเดือน) และ 75% อีกสามรายการ
+
+> ทำไมต้องมีประวัติ 24 เดือน: ฝั่ง AI จะเทรนโมเดลก็ต่อเมื่อประวัติยาวเกิน 12 เดือน
+> และมีเดือนที่เบิกจริงอย่างน้อย 12 เดือน แล้วยังกัน 6 เดือนท้ายไว้ทดสอบว่าโมเดลชนะค่าเฉลี่ยไหม
+> ถ้าประวัติสั้นกว่านี้ ระบบจะตอบว่า "ประวัติการเบิกยังน้อยเกินกว่าที่ AI จะเรียนรู้ได้"
 
 ---
 
@@ -150,12 +189,21 @@ script_update2_utf8.sql      patch ที่อาจารย์ให้มา
 
 ลำดับการกู้: `imp` dump → `mat003_withdraw_type_add.sql` → `script_update*_utf8.sql` → `post_import_gap_fill.sql` → seed จาก `database/scripts/`
 
+**ต้องรัน `database/oracle/document_code_widen.sql` ก่อน seed ชุดวัสดุ**
+ฐานที่กู้มามีคอลัมน์เลขที่เอกสารกว้างแค่ 9 ตัวอักษร แต่โค้ดสร้างรหัสยาว 11 ตัว
+(`MPR-6900001`, `MWD-6900001`, `ISP-6900001`) ถ้าไม่ขยายก่อน การกดบันทึกที่
+MAT-002 / MAT-003 / MAT-004 จะได้ `ORA-12899: value too large for column`
+
 seed ที่ต้องรันเพิ่มหลังชุดหลัก (ไม่งั้นหน้าเหล่านี้จะว่าง)
 
 ```
-seed_mat002_demo_branch.sql      ใบรับวัสดุในสายงานของ user01  (ตามด้วย material:rebuild-inventory --apply)
-seed_ass006_disposal_demo.sql    ใบแจ้งขอจำหน่าย 8 ใบ สำหรับ ASS-006/007/008
+seed_mat002_demo_branch.sql       ใบรับวัสดุในสายงานของ user01
+seed_mat003_withdraw_history.sql  ประวัติเบิก/รับโอน 24 เดือน (จำเป็นสำหรับคอลัมน์ AI ใน MAT-006)
+seed_ass006_disposal_demo.sql     ใบแจ้งขอจำหน่าย 8 ใบ สำหรับ ASS-006/007/008
 ```
+
+หลัง seed สองตัวแรก ต้องสั่ง `php artisan material:rebuild-inventory --apply` เสมอ
+เพราะยอดคงเหลือคำนวณจากใบรับ + ใบเบิกที่รับโอนแล้ว ไม่ได้เก็บแยก
 
 > `seed_ass006_disposal_demo.sql` มีภาษาไทยอยู่ในข้อมูล ต้องตั้ง `NLS_LANG=AMERICAN_AMERICA.AL32UTF8`
 > ก่อนรัน ไม่งั้นชื่อผู้ซื้อกับหมายเหตุจะเพี้ยน
