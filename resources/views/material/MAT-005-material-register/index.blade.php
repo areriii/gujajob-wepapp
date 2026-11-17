@@ -10,6 +10,18 @@
 @endsection
 
 @section('content')
+    @php
+        // ปุ่มย้อนกลับพากลับไปหน้ารายการวัสดุ ไม่ใช่ล้างทั้งหน้า
+        // จึงตัดเฉพาะเงื่อนไขที่ทำให้เข้าสู่หน้ารายละเอียด (keyword / material_id)
+        // แต่คงตัวกรองหน่วยงานกับช่วงเวลาไว้ ผู้ใช้จะได้ไม่ต้องเลือกใหม่
+        $registerBackUrl = route('material.register.index', array_filter([
+            'org_id'      => $orgId,
+            'fiscal_year' => $fiscalYear,
+            'date_from'   => $dateFrom,
+            'date_to'     => $dateTo,
+        ], static fn ($value) => $value !== null && $value !== ''));
+    @endphp
+
     <div class="page-container">
         <x-page-header :title="$pageTitle" />
 
@@ -190,6 +202,10 @@
         @elseif ($material === null)
             <section class="register-card" style="padding: 28px;">
                 <p class="no-data">ไม่พบข้อมูลวัสดุที่ค้นหา</p>
+
+                <div class="form-actions">
+                    <a class="cancel-btn" href="{{ $registerBackUrl }}">ย้อนกลับ</a>
+                </div>
             </section>
 
         @else
@@ -297,6 +313,10 @@
                         @endif
                     </p>
                     <x-app-pagination :paginator="$transactions" />
+                </div>
+
+                <div class="form-actions">
+                    <a class="cancel-btn" href="{{ $registerBackUrl }}">ย้อนกลับ</a>
                 </div>
             </section>
         @endif

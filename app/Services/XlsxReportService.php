@@ -19,8 +19,16 @@ class XlsxReportService
         $zip->addFromString('xl/workbook.xml', '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets></workbook>');
         $zip->addFromString('xl/styles.xml', $this->buildStylesXml());
 
+        // หัวรายงานต้องกินความกว้างเท่าตาราง ไม่งั้นมันจัดกึ่งกลางอยู่แค่ในช่อง A
+        // แล้วตัดบรรทัดอยู่ในช่องเดียว (wrapText) ซึ่งไม่ใช่หัวรายงานที่ควรเป็น
+        $headerCount = max(count($headers), 1);
+
         $allRows = [];
-        if ($title !== '') $allRows[] = [$title];
+        $hasTitle = $title !== '';
+        if ($hasTitle) {
+            // เติมช่องว่างให้ครบความกว้าง เพราะ Excel อยากให้ทุกช่องในช่วง merge มีอยู่จริง
+            $allRows[] = array_pad([$title], $headerCount, '');
+        }
         $allRows[] = $headers;
         array_push($allRows, ...$rows);
 
@@ -39,16 +47,25 @@ class XlsxReportService
         $sheet .= '<col min="12" max="12" width="18" customWidth="1"/>';
         $sheet .= '</cols><sheetData>';
         foreach ($allRows as $rowIndex => $row) {
-            $sheet .= '<row r="' . ($rowIndex + 1) . '">';
+            $isTitleRow = $hasTitle && $rowIndex === 0;
+
+            // ช่องที่ merge แล้วจะไม่ขยายความสูงให้เอง ต้องกำหนดเอง ไม่งั้นฟอนต์ 18pt โดนตัดบน-ล่าง
+            $sheet .= '<row r="' . ($rowIndex + 1) . '"' . ($isTitleRow ? ' ht="26" customHeight="1"' : '') . '>';
             foreach (array_values($row) as $colIndex => $value) {
                 $ref = $this->column($colIndex + 1) . ($rowIndex + 1);
                 $escaped = htmlspecialchars((string) ($value ?? ''), ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                $style = $title !== '' && $rowIndex === 0 ? 1 : 2;
+                $style = $isTitleRow ? 1 : 2;
                 $sheet .= '<c r="' . $ref . '" t="inlineStr" s="' . $style . '"><is><t>' . $escaped . '</t></is></c>';
             }
             $sheet .= '</row>';
         }
-        $sheet .= '</sheetData></worksheet>';
+        $sheet .= '</sheetData>';
+
+        if ($hasTitle && $headerCount > 1) {
+            $sheet .= '<mergeCells count="1"><mergeCell ref="A1:' . $this->column($headerCount) . '1"/></mergeCells>';
+        }
+
+        $sheet .= '</worksheet>';
         $zip->addFromString('xl/worksheets/sheet1.xml', $sheet);
         $zip->close();
 

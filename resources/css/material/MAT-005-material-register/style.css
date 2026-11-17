@@ -662,3 +662,32 @@ textarea {
     cursor: pointer !important;
     filter: none !important;
 }
+
+/* ปุ่มย้อนกลับท้ายการ์ด ใช้คลาสเดียวกับหน้ารายละเอียดอื่นในโมดูลวัสดุ (MAT-001/MAT-002)
+   ไม่ใส่เส้นคั่นด้านบนเหมือนหน้าอื่น เพราะ .table-footer มีพื้นเทากับเส้นคั่นให้อยู่แล้ว */
+.form-actions {
+    margin-top: 18px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 14px;
+}
+
+.cancel-btn {
+    height: 40px;
+    min-width: 72px;
+    padding: 0 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--danger);
+    border-radius: 4px;
+    background: #ffffff;
+    color: var(--danger);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.cancel-btn:hover {
+    background: #fef2f2;
+}
