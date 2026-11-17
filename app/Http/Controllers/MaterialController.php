@@ -138,8 +138,10 @@ class MaterialController extends Controller
                 ]);
             });
 
+            // กลับไปหน้ารายการเหมือนตอนเพิ่มวัสดุใหม่ ผู้ใช้มาจากหน้ารายการ
+            // การเด้งไปหน้ารายละเอียดทำให้ต้องกดย้อนกลับอีกทีเพื่อแก้ตัวถัดไป
             return redirect()
-                ->route('material.items.show', $code)
+                ->route('material.items.index')
                 ->with('success', 'แก้ไขรายการวัสดุเรียบร้อยแล้ว');
         } catch (Throwable $exception) {
             Log::error('MAT-001 update failed', ['code' => $code, 'error' => $exception->getMessage()]);
