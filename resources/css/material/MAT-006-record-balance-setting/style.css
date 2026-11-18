@@ -400,10 +400,6 @@ select {
     vertical-align: middle;
 }
 
-.balance-table tbody tr:first-child {
-    background: #fff9e8;
-}
-
 .balance-table th:nth-child(1),
 .balance-table td:nth-child(1) {
     width: 10%;
@@ -463,6 +459,14 @@ select {
 .blue-text {
     color: var(--primary);
     font-weight: 800;
+}
+
+/* รหัสวัสดุกับชื่อวัสดุในตารางนี้ไม่ได้เป็นลิงก์ กดไม่ได้ จึงใช้สีเดียวกับข้อความอื่นในตาราง
+   คงความหนาไว้เพื่อให้อ่านสองคอลัมน์นี้ง่าย
+   (หน้าแก้ไข edit.blade.php ยังใช้ .blue-text สีเดิมกับเลขที่ใบรับ
+    ซึ่งเป็นตารางที่ไล่สีแยกคอลัมน์ไว้อยู่แต่แรก จึงไม่ได้แก้) */
+.balance-table .blue-text {
+    color: #1f2937;
 }
 
 .balance-qty-input {

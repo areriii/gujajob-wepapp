@@ -36,11 +36,7 @@
     text-align: center;
 }
 
-/* สีและเส้นใต้ของลิงก์ ย้ายไปรวมไว้ที่ components/code-link.css แล้ว
-   เหลือไว้เฉพาะความหนาของหน้านี้ */
-.result-page .request-no-link .request-no {
-    font-weight: 600;
-}
+/* สี เส้นใต้ และความหนาของลิงก์ ย้ายไปรวมไว้ที่ components/code-link.css แล้ว */
 
 .result-page .result-summary {
     font-size: 12px;

@@ -205,11 +205,7 @@
 }
 
 /* Years and "แสดงทั้งหมด" open the forecast asset list (forecast-assets.blade.php).
-   สีและเส้นใต้มาจาก components/code-link.css เหมือนลิงก์อื่นทั้งระบบ
-   ที่นี่เหลือไว้เฉพาะความหนา */
-.forecast-page .forecast-year-link {
-    font-weight: 800;
-}
+   สี เส้นใต้ และความหนา มาจาก components/code-link.css เหมือนลิงก์อื่นทั้งระบบ */
 
 .forecast-page .forecast-all-row td {
     background: #f8fafc;
