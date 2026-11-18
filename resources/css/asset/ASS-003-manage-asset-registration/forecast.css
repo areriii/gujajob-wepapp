@@ -204,15 +204,11 @@
     font-size: 11px;
 }
 
-/* Years and "แสดงทั้งหมด" open the forecast asset list (forecast-assets.blade.php) */
+/* Years and "แสดงทั้งหมด" open the forecast asset list (forecast-assets.blade.php).
+   สีและเส้นใต้มาจาก components/code-link.css เหมือนลิงก์อื่นทั้งระบบ
+   ที่นี่เหลือไว้เฉพาะความหนา */
 .forecast-page .forecast-year-link {
-    color: var(--primary);
     font-weight: 800;
-    text-decoration: none;
-}
-
-.forecast-page .forecast-year-link:hover {
-    text-decoration: underline;
 }
 
 .forecast-page .forecast-all-row td {

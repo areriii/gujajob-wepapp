@@ -1,0 +1,71 @@
+/* =============================================================================
+   ลิงก์ในตารางรายการ — รหัสวัสดุ / รหัสครุภัณฑ์ / เลขที่ใบแจ้ง / ชื่อผู้ประกอบการ
+
+   ทำไมต้องมีไฟล์นี้
+     แต่ละหน้าตั้งคลาสของลิงก์เป็นคนละชื่อ และลงสีไว้คนละสี เลยออกมาไม่เหมือนกัน
+       ASS-003 / ASS-001 / MAT-001  ตัวอักษร #173b8f  ขีดเส้นใต้สีน้ำเงินของเบราว์เซอร์
+       ASS-005                      #1d3f91  ขีดเส้นใต้
+       ASS-006 / ASS-007            #1d3f91  ไม่ขีดเส้นใต้
+       ASS-008                      #1d4ed8  ขีดเส้นใต้
+       ASS-004                      #173b8f  ไม่ขีดเส้นใต้
+       ASS-002 / MAT-002 / MAT-004  ไม่ได้ลงสีเลย เบราว์เซอร์จึงใช้สีน้ำเงินมาตรฐาน #0000ee
+
+     ที่ ASS-002 / MAT-002 / MAT-004 ไม่ได้สีเพราะกฎของคลาสพวกนี้อยู่ใน app.css
+     ซึ่ง layouts/app.blade.php ไม่ได้โหลด (โหลดเฉพาะหน้า home กับ welcome)
+
+   ไฟล์นี้รวมให้เหลือแบบเดียว คือแบบที่หน้า ASS-003 แสดงอยู่
+     ตัวอักษรสีน้ำเงินเข้มของระบบ พร้อมขีดเส้นใต้สีเดียวกัน (เดิมเส้นใต้เป็นสีน้ำเงินของเบราว์เซอร์
+     คนละสีกับตัวอักษร)
+
+   ไม่กำหนดความหนาและขนาดตัวอักษรไว้ที่นี่ แต่ละหน้าจึงคงน้ำหนักเดิมของตัวเองไว้
+
+   layouts/app.blade.php โหลดไฟล์นี้เป็นไฟล์สุดท้าย ต่อจาก @yield('page-style')
+   กฎที่นี่จึงทับ CSS ของแต่ละหน้าได้โดยไม่ต้องใช้ !important
+   ยกเว้นกฎที่เจาะจงกว่า (.result-page .request-no-link .request-no ของ ASS-008)
+   ซึ่งแก้ที่ไฟล์ต้นทางไปแล้ว
+
+   ใช้ var(--primary, #173b8f) เผื่อหน้าไหนไม่ได้โหลด app-shell.css
+   เพราะถ้า var() ไม่มีค่า ทั้งบรรทัดจะถูกทิ้ง แล้วลิงก์จะกลับไปเป็นสีน้ำเงินของเบราว์เซอร์
+============================================================================= */
+
+.asset-code-link,
+.ass-code-link,
+.supplier-name-link,
+.code-link,
+.date-link,
+.request-no-link,
+.mat-code-link,
+.mat004-code-link,
+.forecast-year-link {
+    color: var(--primary, #173b8f);
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+}
+
+/* ตัวเลขรหัสของบางหน้าอยู่ใน <span> ซ้อนอีกชั้น (.asset-code .material-code .request-no)
+   และ span พวกนั้นลงสีของตัวเองไว้ จึงต้องสั่งให้รับสีจากลิงก์แทน
+   ลิงก์เหล่านี้มี span ได้ชั้นเดียวและไม่มี span สีจาง ๆ ซ้อนอยู่ จึงใช้ * ได้ปลอดภัย */
+.asset-code-link *,
+.ass-code-link *,
+.supplier-name-link *,
+.code-link *,
+.date-link *,
+.request-no-link *,
+.mat-code-link *,
+.mat004-code-link *,
+.forecast-year-link * {
+    color: inherit;
+    text-decoration: inherit;
+}
+
+.asset-code-link:hover,
+.ass-code-link:hover,
+.supplier-name-link:hover,
+.code-link:hover,
+.date-link:hover,
+.request-no-link:hover,
+.mat-code-link:hover,
+.mat004-code-link:hover,
+.forecast-year-link:hover {
+    color: #1e40af;
+}

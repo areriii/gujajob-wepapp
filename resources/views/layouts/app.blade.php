@@ -145,6 +145,7 @@
     @vite(['resources/css/components/form-buttons.css'])
     @vite(['resources/css/components/page-layout.css'])
     @vite(['resources/css/components/confirm-icon.css'])
+    @vite(['resources/css/components/code-link.css'])
 </head>
 <body>
     <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg">

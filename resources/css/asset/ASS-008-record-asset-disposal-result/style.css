@@ -36,18 +36,10 @@
     text-align: center;
 }
 
-.result-page .request-no-link {
-    text-decoration: none;
-}
-
+/* สีและเส้นใต้ของลิงก์ ย้ายไปรวมไว้ที่ components/code-link.css แล้ว
+   เหลือไว้เฉพาะความหนาของหน้านี้ */
 .result-page .request-no-link .request-no {
-    color: #1d4ed8;
     font-weight: 600;
-    text-decoration: underline;
-}
-
-.result-page .request-no-link:hover .request-no {
-    color: #1e40af;
 }
 
 .result-page .result-summary {
