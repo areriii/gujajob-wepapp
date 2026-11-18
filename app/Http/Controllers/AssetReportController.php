@@ -149,7 +149,7 @@ class AssetReportController extends Controller
     public function searchSubOrganizations(Request $request): JsonResponse
     {
         $keyword = trim($request->string('q')->value());
-        $parentOrgId = (int) $request->input('parent_org_id', 0);
+        $parentOrgId = $request->filled('parent_org_id') ? (int) $request->input('parent_org_id') : null;
         $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
 
         if ($keyword === '' || empty($visibleOrgIds)) {
@@ -165,7 +165,7 @@ class AssetReportController extends Controller
             ->whereRaw("UPPER(org_name) LIKE UPPER(?)", ["%{$escaped}%"]);
 
         // If a parent org is specified, filter by hierarchy
-        if ($parentOrgId > 0) {
+        if ($parentOrgId !== null) {
             $query->where('org_org_id', $parentOrgId);
         }
 
@@ -442,8 +442,10 @@ class AssetReportController extends Controller
         if ($fiscalYear > 0 && $fiscalYear < 2400) {
             $fiscalYear += 543;
         }
-        $orgId = (int) $request->input('org_id', 0);
-        $subOrgId = (int) $request->input('sub_org_id', 0);
+        // GLB_ORGANIZATION เก็บกรมส่งเสริมสหกรณ์ไว้ด้วย ORG_ID = 0 และเป็นหน่วยงานแม่ของกองวิชาการ/กองฝึกอบรม
+        // ถ้าแปลงค่าว่างเป็น 0 จะแยกไม่ออกจาก "ยังไม่ได้เลือก" แล้วหน่วยงานนั้นจะออกรายงานไม่ได้เลย
+        $orgId = $request->filled('org_id') ? (int) $request->input('org_id') : null;
+        $subOrgId = $request->filled('sub_org_id') ? (int) $request->input('sub_org_id') : null;
         $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
 
         if (($error = $this->validateOrganizationPair($orgId, $subOrgId, $visibleOrgIds)) !== null) {
@@ -498,7 +500,7 @@ class AssetReportController extends Controller
             ->whereRaw("COALESCE(completed_disposals.final_status, ASSET.ass_status) = ?", ['2'])
             // The selected parent is validated against the child hierarchy above;
             // assets are stored against the selected child organization.
-            ->when($subOrgId > 0, fn ($q) => $q->where('ASSET.org_id', $subOrgId));
+            ->when($subOrgId !== null, fn ($q) => $q->where('ASSET.org_id', $subOrgId));
 
         return [
             'assets' => $query->orderBy('ASSET.ass_code')->paginate(self::PER_PAGE),
@@ -509,9 +511,10 @@ class AssetReportController extends Controller
         ];
     }
 
-    private function organizationLine(int $orgId, int $subOrgId): string
+    private function organizationLine(?int $orgId, ?int $subOrgId): string
     {
-        $ids = array_values(array_filter([$orgId, $subOrgId]));
+        // array_filter เฉย ๆ จะทิ้ง 0 ไปด้วย หัวรายงานจะหายชื่อกรมส่งเสริมสหกรณ์ไป
+        $ids = array_values(array_filter([$orgId, $subOrgId], static fn ($id) => $id !== null));
         if ($ids === []) {
             return '';
         }
@@ -559,9 +562,10 @@ class AssetReportController extends Controller
     }
 
     /** @param array<int, int> $visibleOrgIds */
-    private function validateOrganizationPair(int $orgId, int $subOrgId, array $visibleOrgIds): ?string
+    private function validateOrganizationPair(?int $orgId, ?int $subOrgId, array $visibleOrgIds): ?string
     {
-        if ($orgId <= 0 || $subOrgId <= 0) {
+        // null = ยังไม่ได้เลือก ส่วน 0 คือ org_id ของกรมส่งเสริมสหกรณ์ ซึ่งเลือกได้จริง
+        if ($orgId === null || $subOrgId === null) {
             return 'กรุณาเลือกหน่วยงานและหน่วยงานย่อย';
         }
 
