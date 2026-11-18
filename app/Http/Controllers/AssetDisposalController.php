@@ -288,6 +288,12 @@ class AssetDisposalController extends Controller
         $approvalDate = $isLostReason ? $record->created_at_input : $validated['approval_date'];
         $items = $isLostReason ? [] : $validated['items'];
 
+        if (! $isLostReason && ($missing = $this->unpricedItemCodes($id, $items)) !== []) {
+            return redirect()->route('asset.disposals.approval.consider', $id)
+                ->withInput()
+                ->withErrors(['_error' => $this->unpricedItemsMessage($missing)]);
+        }
+
         return $this->finalizeApproval($id, 1, $approvalDate, $items, null);
     }
 
@@ -325,13 +331,19 @@ class AssetDisposalController extends Controller
             'items.*.selling_min_price' => [$isLostReason ? 'nullable' : 'required_if:decision,1', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ], [
             'reject_reason.required_if' => 'กรุณากรอกหมายเหตุหากไม่อนุมัติ',
-            'items.*.selling_min_price.required_if' => 'กรุณากรอกราคาขายของทุกรายการ',
+            'items.*.selling_min_price.required_if' => 'กรุณากรอกราคาขายขั้นต่ำของทุกรายการ',
         ]);
 
         $decision = (int) $validated['decision'];
         $items = $decision === 1 && ! $isLostReason ? ($validated['items'] ?? []) : [];
         $rejectReason = $decision === 2 ? trim((string) $validated['reject_reason']) : null;
         $approvalDate = $isLostReason ? $record->created_at_input : $validated['approval_date'];
+
+        if ($decision === 1 && ! $isLostReason && ($missing = $this->unpricedItemCodes($id, $items)) !== []) {
+            return redirect()->route('asset.disposals.approval.edit', $id)
+                ->withInput()
+                ->withErrors(['_error' => $this->unpricedItemsMessage($missing)]);
+        }
 
         return $this->finalizeApproval($id, $decision, $approvalDate, $items, $rejectReason, false);
     }
@@ -409,6 +421,39 @@ class AssetDisposalController extends Controller
     private function isApprovalPending(object $record): bool
     {
         return $record->selling_approval_status === null || (int) $record->selling_approval_status === 0;
+    }
+
+    /**
+     * คืนรายการครุภัณฑ์ในใบแจ้งที่ฟอร์มไม่ได้ส่งราคาขายขั้นต่ำมา
+     *
+     * หน้าพิจารณามีช่องค้นหารายการครุภัณฑ์ ถ้าผู้อนุมัติกรองไว้ ตารางจะเหลือเฉพาะรายการที่ตรงคำค้น
+     * ฟอร์มจึงส่งมาแค่รายการเหล่านั้น รายการที่ถูกกรองออกไม่ได้ราคา แต่ใบแจ้งถูกอนุมัติไปทั้งใบ
+     * แล้วรายการที่ตกหล่นจะไปโผล่เป็นช่องว่างในหน้าแก้ไขผลการอนุมัติ ทั้งที่กดอนุมัติไปแล้ว
+     * finalizeApproval() วนอัปเดตเฉพาะรายการที่ส่งมา จึงต้องกันไว้ตั้งแต่ตรงนี้
+     *
+     * @param  array<int|string,mixed>  $items  คีย์คือ ASSET_SELLING_LIST.ID ที่ฟอร์มส่งมา
+     * @return list<string>
+     */
+    private function unpricedItemCodes(int $id, array $items): array
+    {
+        $postedIds = array_map('intval', array_keys($items));
+
+        return DB::connection('oracle')->table('ASSET_SELLING_LIST AS sl')
+            ->join('ASSET AS a', 'a.id', '=', 'sl.ass_id')
+            ->leftJoin('ASSET_CATEGORY AS c', 'c.id', '=', 'a.asscat_id')
+            ->where('sl.selling_id', $id)
+            ->when($postedIds !== [], fn ($q) => $q->whereNotIn('sl.id', $postedIds))
+            ->orderBy('sl.id')
+            ->get(['sl.id', 'a.ass_code', 'c.asscat_name'])
+            // ครุภัณฑ์ที่ยังไม่ได้รับลงทะเบียนหน่วยงานจะยังไม่มีรหัส จึงถอยไปใช้ชื่อครุภัณฑ์แทน
+            ->map(fn ($r) => (string) ($r->ass_code ?: ($r->asscat_name ?: 'รายการลำดับที่ ' . $r->id)))
+            ->all();
+    }
+
+    private function unpricedItemsMessage(array $codes): string
+    {
+        return 'ยังไม่ได้กรอกราคาขายขั้นต่ำของ ' . implode(', ', $codes)
+            . ' กรุณากรอกให้ครบทุกรายการก่อนบันทึก (ระบบล้างคำค้นหารายการให้แล้ว)';
     }
 
     private function isLostReason(object|string|null $recordOrReason): bool

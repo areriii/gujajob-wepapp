@@ -117,6 +117,20 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        @if ($isPending && $isLostReason)
+                            <p class="approval-price-note">
+                                เหตุผลการจำหน่ายคือ <strong>สูญหาย</strong> จึงไม่มีการขาย
+                                ช่องราคาขายขั้นต่ำถูกล็อกไว้ที่ 0.00 ให้อัตโนมัติ ไม่ต้องกรอก
+                            </p>
+                        @elseif ($isPending && $itemKeyword !== '')
+                            {{-- ฟอร์มจะส่งเฉพาะรายการที่แสดงอยู่ ถ้ากรองค้างไว้แล้วกดอนุมัติ ระบบจะเตือนและพากลับมากรอกให้ครบ --}}
+                            <p class="approval-price-note approval-price-note--warn">
+                                กำลังกรองรายการด้วยคำค้นหาอยู่ แสดง {{ count($items) }} รายการ
+                                — ต้องกรอกราคาขายขั้นต่ำให้ครบ<strong>ทุกรายการในใบแจ้ง</strong>ก่อนจึงจะอนุมัติได้
+                                <a href="{{ route('asset.disposals.approval.consider', $record->id) }}">ล้างคำค้นหาเพื่อดูทั้งหมด</a>
+                            </p>
+                        @endif
                     </section>
 
                     @if ($isPending)
