@@ -154,6 +154,12 @@ php artisan config:clear
 - `APP_DEBUG=false` ตั้งไว้แล้ว อย่าเปิดเป็น `true` ขณะที่ tunnel เปิดอยู่ เพราะหน้า error จะโชว์รหัสผ่านฐานข้อมูล
 - ปิด tunnel ทุกครั้งหลังเดโมจบ เพื่อไม่ให้เว็บค้างเปิดสู่สาธารณะ
 - ดู error ได้ที่ `storage/logs/laravel.log`
+- **รูปครุภัณฑ์ต้องมี `public/storage` ก่อน** ไม่งั้นอัปโหลดสำเร็จแต่รูปไม่ขึ้น ไม่มี error บอกด้วย
+  ลิงก์นี้อยู่ใน `.gitignore` จึงไม่ติดมากับ repo ถ้าย้ายเครื่องหรือ clone ใหม่ต้องสั่งเอง
+
+  ```powershell
+  php artisan storage:link
+  ```
 
 ---
 
