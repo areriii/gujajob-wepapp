@@ -24,6 +24,13 @@
             <div class="form-error-box">{{ session('error') }}</div>
         @endif
 
+        @if (($pendingCount ?? 0) > 0)
+            {{-- ใบที่รอรับโอนถูกจัดให้ขึ้นก่อนแล้ว บรรทัดนี้บอกจำนวนไว้กันผู้ใช้ไล่เปิดทีละหน้า --}}
+            <div class="transfer-pending-note" role="status">
+                มีใบเบิกรอรับโอนอยู่ <strong>{{ number_format($pendingCount) }}</strong> ใบ แสดงไว้บนสุดของรายการแล้ว
+            </div>
+        @endif
+
         <section class="transfer-card">
             <div class="card-title">
                 <svg class="card-title-icon"><use href="#icon-material-list"></use></svg>

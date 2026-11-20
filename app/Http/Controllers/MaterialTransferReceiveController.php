@@ -60,7 +60,12 @@ class MaterialTransferReceiveController extends Controller
         } elseif (array_key_exists($sort, $sortableColumns) && $sortableColumns[$sort] !== null) {
             $query->orderBy($sortableColumns[$sort], $direction)->orderBy('id', $direction);
         } else {
-            $query->orderByRaw('UPPER(mat_wd_code) ASC')->orderBy('id', 'ASC');
+            // เรียงตามรหัสอย่างเดียวทำให้ใบที่ "รอรับโอน" ไปกองอยู่หน้าท้าย ๆ
+            // (รหัสใหม่เรียงหลังรหัสเก่า) คนใช้เปิดหน้าแรกแล้วเห็นแต่ใบที่รับโอนไปแล้ว
+            // จึงนึกว่าไม่มีใบให้กดรับเลย — ใบที่ยังต้องทำงานต้องขึ้นก่อน
+            $query->orderByRaw("CASE WHEN {$inspSubSql} IS NULL THEN 0 ELSE 1 END ASC")
+                ->orderByRaw('UPPER(mat_wd_code) ASC')
+                ->orderBy('id', 'ASC');
         }
 
         if ($keyword !== '') {
@@ -93,14 +98,21 @@ class MaterialTransferReceiveController extends Controller
             }
         }
 
+        // จำนวนใบที่ยังรอรับโอน ใช้บอกผู้ใช้ว่ามีงานค้างกี่ใบ โดยไม่ต้องไล่เปิดทีละหน้า
+        $pendingCount = (clone $query)
+            ->getQuery()
+            ->whereRaw("{$inspSubSql} IS NULL")
+            ->count();
+
         return view('material.MAT-004-receive-material-transfer.index', [
-            'pageTitle'   => 'รับโอนวัสดุ',
-            'withdrawals' => $withdrawals,
-            'inspMap'     => $inspMap,
-            'searchBy'    => $searchBy,
-            'keyword'     => $keyword,
-            'sort'        => $sort,
-            'direction'   => $direction,
+            'pageTitle'    => 'รับโอนวัสดุ',
+            'withdrawals'  => $withdrawals,
+            'inspMap'      => $inspMap,
+            'searchBy'     => $searchBy,
+            'keyword'      => $keyword,
+            'sort'         => $sort,
+            'direction'    => $direction,
+            'pendingCount' => $pendingCount,
         ]);
     }
 

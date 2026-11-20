@@ -1038,3 +1038,16 @@ textarea {
     .mat004-items-table,
     .mat004-stock-table             { min-width: 600px; }
 }
+/* จำนวนใบเบิกที่ยังรอรับโอน — ใบพวกนี้ถูกจัดให้อยู่บนสุดของรายการแล้ว */
+.transfer-pending-note {
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1e40af;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+}
