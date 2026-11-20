@@ -34,3 +34,6 @@ ai-service/.venv/
 __pycache__/
 .pytest_cache/
 *.egg-info/
+
+# คู่มือ/รายงานไฟล์ Word เก็บไว้นอก git (ไฟล์ละ 10-16 MB)
+/docs/manual/*.docx
