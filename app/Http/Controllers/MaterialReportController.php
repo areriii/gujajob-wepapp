@@ -17,8 +17,27 @@ class MaterialReportController extends Controller
     public function form(Request $request): View
     {
         return view('material.MAT-007-print-material-report.index', [
-            'pageTitle' => 'จัดพิมพ์รายงานวัสดุ',
+            'pageTitle'     => 'จัดพิมพ์รายงานวัสดุ',
+            'organizations' => $this->allowedOrganizations(),
+            // อาจารย์ขอให้ default เป็นหน่วยงานของคนที่ล็อกอิน
+            'defaultOrgId'  => (int) auth()->user()->org_id,
         ]);
+    }
+
+    /**
+     * หน่วยงานที่ผู้ใช้คนนี้ออกรายงานได้ เรียงตามชื่อ สำหรับ dropdown ในหน้าเงื่อนไข
+     *
+     * ไม่ใช้ whereIn เพราะผู้ใช้ระดับกรมมีหน่วยงานลูกเกิน 1000 รายการ ซึ่งเกินเพดาน IN ของ Oracle
+     */
+    private function allowedOrganizations(): \Illuminate\Support\Collection
+    {
+        $allowed = array_flip($this->allowedOrgIds());
+
+        return DB::connection('oracle')->table('GLB_ORGANIZATION')
+            ->orderBy('org_name')
+            ->get(['org_id', 'org_name'])
+            ->filter(fn ($org) => isset($allowed[(int) $org->org_id]))
+            ->values();
     }
 
     public function searchOrganizations(Request $request): JsonResponse
@@ -57,7 +76,8 @@ class MaterialReportController extends Controller
     private function reportData(Request $request): array
     {
         $validated = Validator::make($request->all(), [
-            'org_id' => ['required', 'integer', 'min:1'],
+            // min:1 ตัดกรมส่งเสริมสหกรณ์ (org_id = 0) ซึ่งเป็นหน่วยงานจริงทิ้งไปด้วย
+            'org_id' => ['required', 'integer', 'min:0'],
         ], [
             'org_id.required' => 'กรุณากรอกข้อมูล',
         ])->validate();

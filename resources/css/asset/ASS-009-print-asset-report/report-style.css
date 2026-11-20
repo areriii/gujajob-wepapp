@@ -463,3 +463,37 @@
         background: white;
     }
 }
+
+/* ปุ่มดาวน์โหลด Excel บนหน้าพรีวิว — อาจารย์ขอให้ "ดูก่อน แล้วค่อยเลือกไฟล์"
+   จึงย้ายการเลือกรูปแบบไฟล์จากหน้าเงื่อนไขมาไว้ข้างปุ่มพิมพ์ตรงนี้ */
+.excel-btn {
+    height: 30px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 4px;
+    background: #16a34a;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: 0.15s ease;
+    text-decoration: none;
+}
+
+.excel-btn:hover {
+    background: #15803d;
+}
+
+.excel-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}

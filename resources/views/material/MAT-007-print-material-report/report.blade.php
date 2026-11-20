@@ -37,8 +37,16 @@
                     </tbody>
                 </table>
             </div>
+            {{-- ดูรายงานบนจอได้เลย จะเอาไฟล์หรือไม่ค่อยเลือกตรงนี้ --}}
             <div class="report-actions report-register-actions">
                 <a href="{{ route('material.report.index') }}" class="back-btn"><span>ย้อนกลับ</span></a>
+                <a
+                    class="excel-btn"
+                    href="{{ route('material.report.stock.export', request()->only(['org_id'])) }}"
+                >
+                    <svg><use href="#icon-download-report"></use></svg>
+                    <span>ดาวน์โหลด Excel</span>
+                </a>
                 <button
                     class="print-btn"
                     type="button"
@@ -46,7 +54,7 @@
                     data-pdf-filename="material-balance-report.pdf"
                 >
                     <svg><use href="#icon-printer"></use></svg>
-                    <span>พิมพ์</span>
+                    <span>พิมพ์ PDF</span>
                 </button>
             </div>
         </section>

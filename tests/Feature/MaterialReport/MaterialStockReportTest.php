@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 // Province office 1512 with two child units.
 const MAT_TREE = [1512 => [1512, 1588, 1590], 1588 => [1588], 1590 => [1590]];
+const MAT_ORG_NAMES = [1512 => 'สำนักงานสหกรณ์จังหวัดสระบุรี', 1588 => 'งานธุรการ', 1590 => 'งานพัสดุ'];
 
 beforeEach(fn () => $this->withoutVite());
 
@@ -32,6 +33,13 @@ function materialOracle(): \Yajra\Oci8\Oci8Connection
         }
         if (str_contains($sql, 'UPPER(org_name) LIKE')) {
             return [(object) ['org_id' => 1588, 'org_name' => 'งานธุรการ']];
+        }
+        // รายชื่อหน่วยงานทั้งหมดสำหรับ dropdown ในหน้าเงื่อนไข (คอนโทรลเลอร์กรองสิทธิ์ใน PHP)
+        if (str_contains($sql, 'order by "ORG_NAME"')) {
+            return array_map(
+                fn (int $id) => (object) ['org_id' => $id, 'org_name' => MAT_ORG_NAMES[$id]],
+                array_keys(MAT_ORG_NAMES)
+            );
         }
 
         return [(object) ['org_name' => 'สำนักงานสหกรณ์จังหวัดสระบุรี']];
@@ -55,6 +63,39 @@ it('asks only for the organization, without a sub-organization field', function 
         ->assertDontSee('id="subDepartment"', false);
 
     $this->get('/material/MAT-007-print-material-report/sub-organizations/search?q=x')->assertNotFound();
+});
+
+it('offers the organizations as a dropdown that starts on the signed-in one', function () {
+    signInAtOrganization(1588);
+    materialOracle();
+
+    $page = $this->get('/material/MAT-007-print-material-report')->assertOk();
+
+    // ค่าเริ่มต้นคือหน่วยงานของผู้ใช้ที่ล็อกอิน
+    $page->assertSee('name="org_id"', false)
+        ->assertSee('value="1588"', false);
+
+    // รายการตัวเลือกถูกฉีดเป็น JSON ไว้ที่ window._saOptions — ตรวจที่ก้อนนี้แทนทั้งหน้า
+    // เพราะชื่อหน่วยงานของผู้ใช้ปรากฏที่แถบด้านบนของ layout อยู่แล้ว
+    preg_match('/_saOptions\[.{0,10}mainDepartment.{0,10}\] = (\[.*?\]);/s', $page->getContent(), $matches);
+    $options = json_decode($matches[1] ?? '[]', true);
+
+    expect(array_column($options, 'value'))->toBe([1588]);
+});
+
+it('leaves the file format to the preview page', function () {
+    signInAtOrganization(1512);
+    materialOracle();
+
+    // อาจารย์ขอให้ดูบนจอก่อน แล้วค่อยเลือกไฟล์ หน้าเงื่อนไขจึงไม่มีตัวเลือก PDF/Excel แล้ว
+    $this->get('/material/MAT-007-print-material-report')
+        ->assertOk()
+        ->assertDontSee('name="exportFormat"', false);
+
+    $this->get('/material/MAT-007-print-material-report/report-stock?org_id=1512')
+        ->assertOk()
+        ->assertSee('ดาวน์โหลด Excel')
+        ->assertSee('พิมพ์ PDF');
 });
 
 it('suggests only the signed-in organization and its children', function () {

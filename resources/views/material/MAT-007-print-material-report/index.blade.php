@@ -8,6 +8,10 @@
     <div class="page-container report-page">
         <x-page-header :title="$pageTitle" />
 
+        @error('report')
+            <div class="report-inline-validation-error">{{ $message }}</div>
+        @enderror
+
         <section class="report-card report-type-section">
             <div class="section-title">
                 <svg class="section-icon"><use href="#icon-panel"></use></svg>
@@ -28,7 +32,8 @@
             </div>
         </section>
 
-        <section class="report-card condition-section">
+        {{-- ส่งเป็น GET ธรรมดา ไม่ต้องให้ JS ประกอบ URL เอง กดปุ่มแล้วไปหน้าพรีวิวตรง ๆ --}}
+        <form class="report-card condition-section" method="GET" action="{{ route('material.report.stock') }}">
             <div class="section-title">
                 <svg class="section-icon"><use href="#icon-filter-report"></use></svg>
                 <span>ส่วนที่ 2: กำหนดเงื่อนไขการออกรายงาน</span>
@@ -36,39 +41,36 @@
 
             <div class="condition-grid material-report-grid">
                 <div class="field-group">
-                    <label for="mainDepartment">หน่วยงาน</label>
-                    <div class="searchable-field">
-                        <input id="mainDepartment" type="text" class="searchable-input" placeholder="ค้นหาหน่วยงาน..." autocomplete="off" data-search-url="{{ route('material.report.organizations.search') }}">
-                        <div class="dropdown-suggestions" id="mainDepartmentSuggestions" style="display:none"></div>
-                        <input id="mainDepartmentId" type="hidden">
-                    </div>
+                    <label for="mainDepartment">หน่วยงาน <span class="required">*</span></label>
+
+                    {{-- ตั้งค่าเริ่มต้นเป็นหน่วยงานของผู้ใช้ที่ล็อกอิน และเลือกได้เฉพาะหน่วยงานตัวเองกับหน่วยงานลูก
+                         เดิมเป็นช่องพิมพ์ค้นหา ถ้าไม่ได้กดเลือกจากรายการจะไม่มี id ติดไปด้วย --}}
+                    <x-searchable-select
+                        name="org_id"
+                        id="mainDepartment"
+                        placeholder="เลือกหน่วยงาน"
+                        :options="$organizations->map(fn ($org) => ['value' => (int) $org->org_id, 'label' => $org->org_name])"
+                        :selected="old('org_id', $defaultOrgId)"
+                    />
+
                     <span class="report-field-error" id="orgError">@error('org_id'){{ $message }}@enderror</span>
                 </div>
             </div>
 
             <div class="export-panel">
-                <div class="export-format">
-                    <span class="export-label">รูปแบบไฟล์ที่ต้องการออกรายงาน:</span>
-
-                    <label class="radio-label pdf-radio">
-                        <input type="radio" name="exportFormat" value="pdf" checked>
-                        <span>PDF Document (.pdf)</span>
-                    </label>
-
-                    <label class="radio-label excel-radio">
-                        <input type="radio" name="exportFormat" value="xlsx">
-                        <span>Excel Spreadsheet (.xlsx)</span>
-                    </label>
-                </div>
+                <p class="export-hint">
+                    กดพรีวิวเพื่อดูรายงานบนหน้าจอก่อน จากหน้าพรีวิวจึงเลือกบันทึกเป็น PDF หรือ Excel ได้
+                    ถ้าต้องการดูเฉย ๆ ก็ไม่ต้องดาวน์โหลดไฟล์
+                </p>
 
                 <div class="export-actions">
-                    <button class="preview-btn" type="button" id="previewReportButton" data-preview-url="{{ route('material.report.stock') }}" data-export-url="{{ route('material.report.stock.export') }}">
+                    <button class="preview-btn" type="submit" id="previewReportButton">
                         <svg><use href="#icon-printer"></use></svg>
                         <span>พรีวิว</span>
                     </button>
                 </div>
             </div>
-        </section>
+        </form>
     </div>
 
 @endsection

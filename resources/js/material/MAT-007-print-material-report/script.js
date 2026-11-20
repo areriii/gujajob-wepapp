@@ -1,3 +1,5 @@
+import { initSearchableSelects } from '../../components/searchable-select.js';
+
 const sidebarStorageKey = 'gujajob.sidebar.groupState';
 
 function getSidebarState() {
@@ -93,40 +95,10 @@ function closeOverlay(overlay) {
 
 function initializeMaterialReportPage() {
     const reportTypeButtons = document.querySelectorAll('.report-type-item');
-    const previewButton = document.getElementById('previewReportButton');
-
-    const mainDepartment = document.getElementById('mainDepartment');
-    const mainDepartmentId = document.getElementById('mainDepartmentId');
 
     if (!reportTypeButtons.length) {
         return;
     }
-
-    function autocomplete(input, hidden, suggestions, url, extraParams, onSelect) {
-        let timer;
-        input.addEventListener('input', () => {
-            hidden.value = '';
-            onSelect?.(null);
-            clearTimeout(timer);
-            const query = input.value.trim();
-            if (!query) { suggestions.innerHTML = ''; suggestions.style.display = 'none'; return; }
-            timer = setTimeout(async () => {
-                const params = new URLSearchParams({ q: query, ...extraParams() });
-                const payload = await fetch(`${url}?${params}`).then((r) => r.json());
-                suggestions.innerHTML = '';
-                (payload.data || []).forEach((item) => {
-                    const option = document.createElement('div');
-                    option.className = 'suggestion-item'; option.textContent = item.label;
-                    option.addEventListener('click', () => { input.value = item.label; hidden.value = item.id; suggestions.style.display = 'none'; onSelect?.(item); });
-                    suggestions.appendChild(option);
-                });
-                suggestions.style.display = suggestions.children.length ? 'block' : 'none';
-            }, 300);
-        });
-    }
-
-    mainDepartment.addEventListener('input', () => { document.getElementById('orgError').textContent = ''; });
-    autocomplete(mainDepartment, mainDepartmentId, document.getElementById('mainDepartmentSuggestions'), mainDepartment.dataset.searchUrl, () => ({}));
 
     reportTypeButtons.forEach((button) => {
         button.addEventListener('click', () => {
@@ -136,39 +108,28 @@ function initializeMaterialReportPage() {
         });
     });
 
-    if (previewButton) {
-        mainDepartment?.addEventListener('change', () => { document.getElementById('orgError').textContent = ''; });
-        const updateAction = () => {
-            const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
-            previewButton.classList.toggle('download-btn', isExcel);
-            previewButton.classList.toggle('preview-btn', !isExcel);
-            previewButton.querySelector('span').textContent = isExcel ? 'ดาวน์โหลด' : 'พรีวิว';
-            previewButton.querySelector('use').setAttribute('href', isExcel ? '#icon-download-report' : '#icon-printer');
-        };
+    /**
+     * หน่วยงานเป็น dropdown ที่ตั้งค่าเริ่มต้นตามผู้ใช้ที่ล็อกอินให้แล้ว และฟอร์มส่งแบบ GET เอง
+     * จึงเหลือแค่กันกรณีผู้ใช้ลบค่าในช่องทิ้งก่อนกดพรีวิว
+     */
+    const orgField = document.getElementById('mainDepartment');
+    const orgError = document.getElementById('orgError');
+    const conditionForm = orgField?.closest('form');
 
-        document.querySelectorAll('input[name="exportFormat"]').forEach((input) => input.addEventListener('change', updateAction));
-        updateAction();
+    conditionForm?.addEventListener('submit', (event) => {
+        if (String(orgField.value || '').trim() !== '') {
+            if (orgError) orgError.textContent = '';
+            return;
+        }
 
-        previewButton.addEventListener('click', () => {
-            document.getElementById('orgError').textContent = '';
-            const orgId = mainDepartmentId.value;
-            if (!orgId || orgId === '0') {
-                // ช่องนี้เก็บ id ไว้ใน hidden input ซึ่งจะถูกตั้งค่าก็ต่อเมื่อกดเลือกจากรายการ
-                // ถ้าผู้ใช้พิมพ์ชื่อเองแล้วไม่ได้เลือก (หรือเบราว์เซอร์ autofill มาให้) ช่องจะดูเหมือนกรอกแล้ว
-                // แต่ยังไม่มี id จึงต้องบอกให้ชัดว่าต้อง "เลือกจากรายการ" ไม่ใช่แค่ "กรอกข้อมูล"
-                document.getElementById('orgError').textContent = mainDepartment.value.trim() !== ''
-                    ? 'กรุณาเลือกหน่วยงานจากรายการที่ระบบแสดง'
-                    : 'กรุณากรอกข้อมูล';
-                mainDepartment.focus();
-                return;
-            }
-            const params = new URLSearchParams({ org_id: orgId });
-            const target = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx'
-                ? previewButton.dataset.exportUrl
-                : previewButton.dataset.previewUrl;
-            window.location.href = `${target}?${params}`;
-        });
-    }
+        event.preventDefault();
+        if (orgError) orgError.textContent = 'กรุณาเลือกหน่วยงานจากรายการที่ระบบแสดง';
+        conditionForm.querySelector('.guja-autocomplete__input')?.focus();
+    });
+
+    conditionForm?.addEventListener('input', () => {
+        if (orgError && String(orgField.value || '').trim() !== '') orgError.textContent = '';
+    });
 }
 
 document.addEventListener('keydown', (event) => {
@@ -183,6 +144,7 @@ document.addEventListener('keydown', (event) => {
 
 initializeSidebarGroups();
 preventDisabledMenuReload();
+initSearchableSelects();
 initializeMaterialReportPage();
 
 
