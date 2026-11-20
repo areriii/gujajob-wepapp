@@ -169,3 +169,17 @@
         min-width: 760px;
     }
 }
+
+/* แถบแจ้งว่ากำลังแก้ผลการจำหน่ายที่บันทึกไว้แล้ว ไม่ใช่กรอกใหม่ */
+.result-edit-note {
+    margin: 0 0 4px;
+    padding: 11px 14px;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1e40af;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.7;
+}

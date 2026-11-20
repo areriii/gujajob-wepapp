@@ -92,7 +92,7 @@
 
             <div class="mat002-field">
                 <label for="receivedDate">วันที่รับวัสดุ <span class="required">*</span></label>
-                <input id="receivedDate" name="mat_pro_date" type="text" class="js-date-picker @error('mat_pro_date') gujajob-is-invalid @enderror" placeholder="dd/mm/yyyy" data-picker-position="below" value="{{ old('mat_pro_date', optional($record?->mat_pro_date)->format('Y-m-d')) }}" required>
+                <input id="receivedDate" name="mat_pro_date" type="text" class="js-date-picker @error('mat_pro_date') gujajob-is-invalid @enderror" placeholder="วว-ดด-ปปปป" data-picker-position="below" value="{{ old('mat_pro_date', optional($record?->mat_pro_date)->format('Y-m-d')) }}" required>
                 <div class="mat002-field-error" id="receivedDateError" aria-live="polite">@error('mat_pro_date'){{ $message }}@enderror</div>
             </div>
 
@@ -149,7 +149,7 @@
 
             <div class="mat002-field">
                 <label for="contractDate">วันที่ของสัญญา</label>
-                <input id="contractDate" name="mat_pro_contact_date" type="text" class="js-date-picker" placeholder="dd/mm/yyyy" data-picker-position="below" value="{{ old('mat_pro_contact_date', optional($record?->mat_pro_contact_date)->format('Y-m-d')) }}">
+                <input id="contractDate" name="mat_pro_contact_date" type="text" class="js-date-picker" placeholder="วว-ดด-ปปปป" data-picker-position="below" value="{{ old('mat_pro_contact_date', optional($record?->mat_pro_contact_date)->format('Y-m-d')) }}">
                 <div class="mat002-field-error" aria-live="polite">@error('mat_pro_contact_date'){{ $message }}@enderror</div>
             </div>
         </div>

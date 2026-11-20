@@ -106,11 +106,10 @@
                                 </td>
                                 <td>{{ $record->buyer ?: '-' }}</td>
                                 <td class="action-column">
-                                    @if ($record->can_record_result)
-                                        <a class="create-btn result-save-btn" href="{{ route('asset.disposals.results.create', $record->id) }}">บันทึกผล</a>
-                                    @else
-                                        <span class="result-done-text">-</span>
-                                    @endif
+                                    {{-- ใบที่บันทึกผลไปแล้วก็ยังต้องแก้ได้ เช่น กรอกราคาผิด หรือชื่อผู้รับซื้อผิด --}}
+                                    <a class="create-btn result-save-btn" href="{{ route('asset.disposals.results.create', $record->id) }}">
+                                        {{ $record->can_record_result ? 'บันทึกผล' : 'แก้ไขผล' }}
+                                    </a>
                                 </td>
                             </tr>
                         @empty

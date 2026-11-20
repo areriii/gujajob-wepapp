@@ -13,6 +13,7 @@ use App\Services\OrganizationVisibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class SearchSuggestionsController extends Controller
 {
@@ -501,22 +502,61 @@ class SearchSuggestionsController extends Controller
     //  ASS-004: Organization within visible scope (returns value/label)
     // ──────────────────────────────────────────────────────────
 
+    /**
+     * หน่วยงานผู้รับจัดสรร (ASS-004)
+     *
+     * ชื่อหน่วยงานซ้ำกันเยอะมากในฐานข้อมูลจริง เช่น "กลุ่มจัดตั้งและส่งเสริมสหกรณ์"
+     * มีอยู่ในแทบทุกจังหวัด เดิมรายการจึงขึ้นชื่อเดียวกันติดกันสิบกว่าบรรทัด เลือกไม่ถูก
+     * จึงต่อท้ายด้วยชื่อหน่วยงานแม่ และถ้ายังซ้ำกันอีก (ข้อมูลต้นทางมีแถวซ้ำจริง ๆ)
+     * ค่อยต่อท้ายด้วยรหัสหน่วยงานเพื่อให้แยกออกจากกันได้
+     *
+     * กรองสิทธิ์ใน PHP ไม่ใช้ whereIn เพราะผู้ใช้ระดับกรมมองเห็นหน่วยงานเกิน 1000 รายการ
+     * ซึ่งเกินเพดาน IN ของ Oracle (ORA-01795)
+     */
     private function searchAssignOrg(string $keyword, int $limit): JsonResponse
     {
-        $escaped       = $this->escapeLike($keyword);
         $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
 
         if (empty($visibleOrgIds)) {
             return response()->json(['data' => []]);
         }
 
-        $data = GlbOrganization::query()
-            ->whereIn('org_id', $visibleOrgIds)
-            ->whereRaw('UPPER(org_name) LIKE UPPER(?)', ['%' . $escaped . '%'])
-            ->orderBy('org_name')
-            ->limit($limit)
-            ->get(['org_id', 'org_name'])
-            ->map(fn ($o) => ['value' => (string) $o->org_id, 'label' => $o->org_name]);
+        $visible = array_flip($visibleOrgIds);
+        $needle = mb_strtoupper(trim($keyword));
+
+        $rows = DB::connection('oracle')
+            ->table('GLB_ORGANIZATION AS o')
+            ->leftJoin('GLB_ORGANIZATION AS p', 'p.org_id', '=', 'o.org_org_id')
+            ->orderBy('o.org_name')
+            ->orderBy('o.org_id')
+            ->get(['o.org_id', 'o.org_name', 'o.org_code', 'p.org_name AS parent_name'])
+            ->filter(function ($org) use ($visible, $needle) {
+                return isset($visible[(int) $org->org_id])
+                    && ($needle === '' || mb_strpos(mb_strtoupper((string) $org->org_name), $needle) !== false);
+            })
+            ->take($limit)
+            ->values();
+
+        // ชื่อ + หน่วยงานแม่ ที่ยังชนกันอยู่ ต้องมีรหัสกำกับถึงจะเลือกได้ถูกแถว
+        $seen = [];
+        foreach ($rows as $org) {
+            $key = $org->org_name . '|' . ($org->parent_name ?? '');
+            $seen[$key] = ($seen[$key] ?? 0) + 1;
+        }
+
+        $data = $rows->map(function ($org) use ($seen) {
+            $label = (string) $org->org_name;
+
+            if (! empty($org->parent_name)) {
+                $label .= ' — ' . $org->parent_name;
+            }
+
+            if (($seen[$org->org_name . '|' . ($org->parent_name ?? '')] ?? 0) > 1 && ! empty($org->org_code)) {
+                $label .= ' [' . $org->org_code . ']';
+            }
+
+            return ['value' => (string) $org->org_id, 'label' => $label];
+        });
 
         return response()->json(['data' => $data]);
     }

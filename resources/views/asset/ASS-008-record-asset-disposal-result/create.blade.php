@@ -8,6 +8,15 @@
 @endsection
 
 @section('content')
+    @if ($isCompleted ?? false)
+        {{-- เข้ามาแก้ผลที่บันทึกไปแล้ว ต้องบอกให้ชัดว่าค่าที่เห็นคือของเดิม ไม่ใช่ฟอร์มเปล่า --}}
+        <div class="page-container" style="padding-bottom:0">
+            <div class="result-edit-note" role="status">
+                ใบนี้บันทึกผลการจำหน่ายไว้แล้ว ค่าที่แสดงอยู่คือค่าที่บันทึกไว้เดิม
+                แก้ไขแล้วกดบันทึกเพื่อทับของเดิมได้ เช่น กรอกราคาผิดหรือพิมพ์ชื่อผู้รับซื้อผิด
+            </div>
+        </div>
+    @endif
     @php
         $resultButtonText = $isLostReason ? 'ยืนยันการจำหน่าย' : 'บันทึก';
     @endphp
@@ -133,7 +142,7 @@
                         <div class="detail-grid three-col">
                             <div class="field-group full-width result-buyer-field">
                                 <label for="buyer">ผู้รับซื้อ @unless ($isLostReason)<span class="required">*</span>@endunless</label>
-                                <input id="buyer" name="buyer" type="text" maxlength="150" value="{{ $isLostReason ? '-' : old('buyer') }}" placeholder="{{ $isLostReason ? 'ไม่ต้องระบุผู้รับซื้อ' : 'ชื่อบุคคล / ชื่อบริษัทผู้รับซื้อ' }}" @readonly($isLostReason) @required(! $isLostReason)>
+                                <input id="buyer" name="buyer" type="text" maxlength="150" value="{{ $isLostReason ? '-' : old('buyer', $record->buyer ?? '') }}" placeholder="{{ $isLostReason ? 'ไม่ต้องระบุผู้รับซื้อ' : 'ชื่อบุคคล / ชื่อบริษัทผู้รับซื้อ' }}" @readonly($isLostReason) @required(! $isLostReason)>
                                 @error('buyer')<span class="field-error">{{ $message }}</span>@enderror
                             </div>
                         </div>

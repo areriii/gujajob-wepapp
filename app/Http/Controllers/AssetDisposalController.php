@@ -592,23 +592,23 @@ class AssetDisposalController extends Controller
         abort_if(! $record, 404);
         abort_if((int) ($record->selling_approval_status ?? 0) !== 1, 403);
 
-        if ($this->isResultCompleted($record)) {
-            return redirect()->route('asset.disposals.results.show', $id)
-                ->with('success', 'รายการนี้บันทึกผลการจำหน่ายเรียบร้อยแล้ว');
-        }
+        // บันทึกผลไปแล้วก็ยังเข้ามาแก้ได้ เช่น กรอกราคาผิดหรือพิมพ์ชื่อผู้รับซื้อผิด
+        // เดิมหน้านี้เด้งไปหน้ารายละเอียดทันที ทำให้แก้อะไรไม่ได้เลยหลังกดบันทึกครั้งแรก
+        $isCompleted = $this->isResultCompleted($record);
 
         // Create page must always submit all lines, so do not filter item rows.
         $items = $this->buildResultItemsQuery($id, 'all', '')->get();
-        $statusInfo = $this->resolveResultStatusInfo((string) ($record->reason ?? ''), false);
+        $statusInfo = $this->resolveResultStatusInfo((string) ($record->reason ?? ''), $isCompleted);
         $isLostReason = $this->isLostReason($record);
 
         return view('asset.ASS-008-record-asset-disposal-result.create', [
-            'pageTitle'      => 'บันทึกผลการจำหน่ายครุภัณฑ์',
+            'pageTitle'      => $isCompleted ? 'แก้ไขผลการจำหน่ายครุภัณฑ์' : 'บันทึกผลการจำหน่ายครุภัณฑ์',
             'record'         => $record,
             'items'          => $items,
             'statusInfo'     => $statusInfo,
             'reasonLabel'    => self::REASON_OPTIONS[$record->reason ?? ''] ?? ($record->reason ?? '-'),
             'isLostReason'   => $isLostReason,
+            'isCompleted'    => $isCompleted,
         ]);
     }
 
@@ -619,10 +619,9 @@ class AssetDisposalController extends Controller
         abort_if(! $record, 404);
         abort_if((int) ($record->selling_approval_status ?? 0) !== 1, 403);
 
-        if ($this->isResultCompleted($record)) {
-            return redirect()->route('asset.disposals.results.show', $id)
-                ->withErrors(['_error' => 'รายการนี้ถูกบันทึกผลการจำหน่ายแล้ว']);
-        }
+        // เขียนทับผลเดิมได้ เพราะเป็นการแก้ไขข้อมูลที่กรอกผิด ไม่ใช่การจำหน่ายซ้ำ
+        // สถานะครุภัณฑ์ที่เขียนลงไปเป็นค่าเดิมตามเหตุผลการจำหน่าย จึงบันทึกซ้ำได้ไม่มีผลข้างเคียง
+        $wasCompleted = $this->isResultCompleted($record);
 
         $isLostReason = $this->isLostReason($record);
         $validated = $request->validate($isLostReason ? [] : [
@@ -722,7 +721,9 @@ class AssetDisposalController extends Controller
         }
 
         return redirect()->route('asset.disposals.results.index')
-            ->with('success', 'บันทึกผลการจำหน่ายเรียบร้อยแล้ว');
+            ->with('success', $wasCompleted
+                ? 'แก้ไขผลการจำหน่ายเรียบร้อยแล้ว'
+                : 'บันทึกผลการจำหน่ายเรียบร้อยแล้ว');
     }
 
     public function resultShow(Request $request, int $id): View
