@@ -31,16 +31,13 @@
                             />
                         </div>
 
-                        <div class="field-group">
-                            <label for="fiscalYearSelect">ปีงบประมาณ</label>
-                            <select id="fiscalYearSelect" name="fiscal_year">
-                                @foreach ($availableFiscalYears as $fy)
-                                    <option value="{{ $fy }}" @selected($fiscalYear == $fy)>
-                                        {{ $fy }}{{ $fy === $currentFY ? ' (ปัจจุบัน)' : '' }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
+                        <x-fiscal-year-input
+                            id="fiscalYearSelect"
+                            :value="$fiscalYear"
+                            :years="$availableFiscalYears"
+                            :currentYear="$currentFY"
+                            :notice="$fiscalYearNotice ?? null"
+                        />
 
                         <div class="field-group">
                             <label for="searchBy">ค้นหาจาก</label>

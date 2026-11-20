@@ -173,8 +173,8 @@ class MaterialReceivingController extends Controller
             $newRecord = MaterialProcurement::query()->findOrFail($procurementId);
 
             return redirect()
-                ->route('material.receiving.edit', $newRecord->mat_pro_code)
-                ->with('success', 'บันทึกข้อมูลเอกสารการรับวัสดุเรียบร้อยแล้ว');
+                ->route('material.receiving.index')
+                ->with('success', "บันทึกข้อมูลการรับวัสดุเลขที่ {$newRecord->mat_pro_code} เรียบร้อยแล้ว");
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (Throwable $exception) {

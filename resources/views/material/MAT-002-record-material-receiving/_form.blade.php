@@ -348,7 +348,7 @@
                     <td colspan="7" class="total-summary-cell">
                         รวมจำนวนรับเข้าทั้งสิ้น
                         <span class="total-value" id="totalQty">0</span>
-                        รายการ
+                        จำนวน
                     </td>
                 </tr>
             </tfoot>

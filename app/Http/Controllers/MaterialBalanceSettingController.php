@@ -16,6 +16,9 @@ use Throwable;
 
 class MaterialBalanceSettingController extends Controller
 {
+    /** จำนวนปีงบประมาณย้อนหลังที่เลือกได้ ให้ตรงกับหน้าคุมทะเบียนวัสดุ (MAT-005) */
+    private const FISCAL_YEAR_CHOICES = 10;
+
     public function __construct(
         private MaterialInventoryService $inventory,
         private MaterialStockRecommendationService $recommendations,
@@ -40,7 +43,7 @@ class MaterialBalanceSettingController extends Controller
             ->orderBy('org_name')
             ->get(['org_id', 'org_name']);
 
-        $availableFiscalYears = FiscalYearService::availableYears(5);
+        $availableFiscalYears = FiscalYearService::availableYears(self::FISCAL_YEAR_CHOICES);
 
         return view('material.MAT-006-record-balance-setting.index', [
             'pageTitle'            => 'บันทึกการตั้งยอดคงเหลือ',
@@ -61,6 +64,7 @@ class MaterialBalanceSettingController extends Controller
             'orgId'                => $orgId,
             'organizations'        => $organizations,
             'availableFiscalYears' => $availableFiscalYears,
+            'fiscalYearNotice'     => $listing['fiscalYearNotice'],
             'bulkUpdateUrl'        => route('material.balance.bulk-update'),
         ]);
     }
@@ -114,10 +118,17 @@ class MaterialBalanceSettingController extends Controller
         // null = every organization; 0 is a real organization (กรมส่งเสริมสหกรณ์), not "all"
         $orgId       = $request->filled('org_id') && is_numeric($request->input('org_id')) ? $request->integer('org_id') : null;
         $currentFY   = FiscalYearService::current();
-        $fiscalYear  = $request->integer('fiscal_year', $currentFY);
-        // Clamp to available years
-        if ($fiscalYear < $currentFY - 4 || $fiscalYear > $currentFY) {
+        // ช่องนี้เป็น text box แล้ว ผู้ใช้พิมพ์ปีอะไรก็ได้ ถ้าหลุดช่วงต้องบอกด้วยว่าทำไมเลขเปลี่ยน
+        $requestedFY = $request->integer('fiscal_year', $currentFY);
+        $oldestFY    = $currentFY - (self::FISCAL_YEAR_CHOICES - 1);
+        $fiscalYear  = $requestedFY;
+        $fiscalYearNotice = null;
+
+        if ($fiscalYear < $oldestFY || $fiscalYear > $currentFY) {
             $fiscalYear = $currentFY;
+            if ($request->filled('fiscal_year')) {
+                $fiscalYearNotice = "ปีงบประมาณ {$requestedFY} อยู่นอกช่วง {$oldestFY}–{$currentFY} ระบบจึงแสดงปี {$currentFY} ให้";
+            }
         }
 
         $allowedSorts = [
@@ -175,6 +186,7 @@ class MaterialBalanceSettingController extends Controller
             'query'      => $query,
             'orgId'      => $orgId,
             'fiscalYear' => $fiscalYear,
+            'fiscalYearNotice' => $fiscalYearNotice,
             'searchBy'   => $searchBy,
             'keyword'    => $keyword,
             'sort'       => $sort,

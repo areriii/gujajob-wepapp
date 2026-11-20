@@ -1,0 +1,46 @@
+/* ช่องปีงบประมาณ (x-fiscal-year-input) — ใช้ร่วมกันที่ MAT-005 และ MAT-006
+   โหลดท้ายสุดใน layout เพื่อให้ทับ .field-group input ของแต่ละหน้าได้โดยไม่ต้องใช้ !important */
+
+.fiscal-year-field {
+    position: relative;
+}
+
+.fiscal-year-field .fiscal-year-input {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid #cfd8e4;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #1f2937;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+}
+
+.fiscal-year-field .fiscal-year-input:focus {
+    border-color: #2f55ab;
+    box-shadow: 0 0 0 3px rgba(47, 85, 171, 0.12);
+}
+
+.fiscal-year-field .fiscal-year-input::placeholder {
+    color: #9aa6b8;
+}
+
+.fiscal-year-field .fiscal-year-hint,
+.fiscal-year-field .fiscal-year-notice {
+    display: block;
+    margin-top: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.fiscal-year-field .fiscal-year-hint {
+    color: #7b8699;
+}
+
+/* ผู้ใช้พิมพ์ปีที่อยู่นอกช่วง ระบบเลื่อนมาปีปัจจุบันให้ จึงต้องบอกว่าทำไมเลขไม่ตรงที่พิมพ์ */
+.fiscal-year-field .fiscal-year-notice {
+    color: #92400e;
+}

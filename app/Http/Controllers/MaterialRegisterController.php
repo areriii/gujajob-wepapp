@@ -18,6 +18,9 @@ use Throwable;
 
 class MaterialRegisterController extends Controller
 {
+    /** จำนวนปีงบประมาณย้อนหลังที่เลือกได้ (อาจารย์ขออย่างน้อย 10 ปี) */
+    private const FISCAL_YEAR_CHOICES = 10;
+
     public function __construct(
         private readonly OrganizationVisibilityService $orgVisibility,
     ) {}
@@ -42,7 +45,7 @@ class MaterialRegisterController extends Controller
             ->filter(fn ($org) => isset($visible[(int) $org->org_id]))
             ->values();
 
-        $availableFiscalYears = FiscalYearService::availableYears(5);
+        $availableFiscalYears = FiscalYearService::availableYears(self::FISCAL_YEAR_CHOICES);
 
         // Build material list filtered by org if specified
         $matQuery = Material::query()->orderBy('mat_code');
@@ -71,6 +74,7 @@ class MaterialRegisterController extends Controller
             'currentFY'            => $currentFY,
             'organizations'        => $organizations,
             'availableFiscalYears' => $availableFiscalYears,
+            'fiscalYearNotice'     => $filters['fiscalYearNotice'],
         ];
 
         if (! $searched || $filters['dateError']) {
@@ -198,9 +202,17 @@ class MaterialRegisterController extends Controller
         }
 
         $currentFY  = FiscalYearService::current();
-        $fiscalYear = $request->integer('fiscal_year', $currentFY);
-        if ($fiscalYear < $currentFY - 4 || $fiscalYear > $currentFY) {
+        // ช่องนี้เป็น text box แล้ว ผู้ใช้พิมพ์ปีอะไรก็ได้ ถ้าหลุดช่วงต้องบอกด้วยว่าทำไมเลขเปลี่ยน
+        $requestedFY = $request->integer('fiscal_year', $currentFY);
+        $oldestFY = $currentFY - (self::FISCAL_YEAR_CHOICES - 1);
+        $fiscalYear = $requestedFY;
+        $fiscalYearNotice = null;
+
+        if ($fiscalYear < $oldestFY || $fiscalYear > $currentFY) {
             $fiscalYear = $currentFY;
+            if ($request->filled('fiscal_year')) {
+                $fiscalYearNotice = "ปีงบประมาณ {$requestedFY} อยู่นอกช่วง {$oldestFY}–{$currentFY} ระบบจึงแสดงปี {$currentFY} ให้";
+            }
         }
 
         $dateFrom = $request->string('date_from')->value();
@@ -214,6 +226,7 @@ class MaterialRegisterController extends Controller
         return [
             'orgId'         => $orgId,
             'fiscalYear'    => $fiscalYear,
+            'fiscalYearNotice' => $fiscalYearNotice,
             'dateFrom'      => $dateFrom,
             'dateTo'        => $dateTo,
             'effectiveFrom' => $effectiveFrom,

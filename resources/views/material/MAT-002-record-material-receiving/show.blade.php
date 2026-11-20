@@ -133,7 +133,7 @@
                             <td colspan="3"></td>
                             <td class="total-label">รวมจำนวนรับเข้าทั้งสิ้น</td>
                             <td class="total-value">{{ $totalQuantity }}</td>
-                            <td class="total-unit">รายการ</td>
+                            <td class="total-unit">จำนวน</td>
                         </tr>
                     </tfoot>
                 </table>
