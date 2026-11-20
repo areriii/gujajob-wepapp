@@ -186,25 +186,81 @@ function initPreviewButton() {
         document.body.appendChild(overlay);
     };
 
-    const requestExcel = async (url) => {
-        if (!isExcelTestMode) {
-            const link = document.createElement('a');
-            link.href = url;
-            link.rel = 'noopener';
-            link.download = 'asset-report.xlsx';
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            return;
+    /**
+     * แถบแจ้งเตือนระดับหน้า ใช้ class เดียวกับที่ฝั่งเซิร์ฟเวอร์ render ตอน redirect กลับมา
+     * ถ้าตอนนี้ยังไม่มีแถบอยู่ในหน้า ก็สร้างแทรกไว้เหนือ "ส่วนที่ 1" ให้
+     */
+    const showReportError = (message) => {
+        const page = document.querySelector('.report-page');
+        if (!page) return;
+
+        let box = page.querySelector('.report-inline-validation-error');
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'report-inline-validation-error';
+            page.querySelector('.report-type-section')?.before(box);
         }
 
+        box.textContent = message;
+        box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+
+    const clearReportError = () => {
+        document.querySelector('.report-page .report-inline-validation-error')?.remove();
+    };
+
+    const SPREADSHEET_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    /**
+     * เดิมปุ่ม Excel ยิง <a download> ตรง ๆ เมื่อเงื่อนไขไม่ผ่าน เซิร์ฟเวอร์จะ redirect
+     * กลับมาเป็นหน้า HTML แต่เบราว์เซอร์บันทึก HTML นั้นเป็น asset-report.xlsx
+     * ผู้ใช้ได้ไฟล์ที่ Excel เปิดไม่ขึ้นโดยไม่มีข้อความบอกสาเหตุเลย
+     * จึงต้องอ่าน response ก่อน แล้วดาวน์โหลดเฉพาะตอนที่ได้ไฟล์ spreadsheet จริง
+     */
+    const requestExcel = async (url) => {
         const response = await fetch(url, {
             credentials: 'same-origin',
-            headers: { Accept: 'text/html, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+            headers: { Accept: `text/html, ${SPREADSHEET_TYPE}` },
         });
         if (!response.ok) throw new Error(`Excel request failed with status ${response.status}`);
 
-        openTestPopup(await response.text());
+        const contentType = response.headers.get('content-type') ?? '';
+
+        if (!contentType.includes('spreadsheetml')) {
+            const html = await response.text();
+
+            if (isExcelTestMode) {
+                openTestPopup(html);
+                return;
+            }
+
+            // ดึงข้อความจากแถบ error ที่เซิร์ฟเวอร์ render มาให้ เพื่อบอกเหตุผลเดียวกับฝั่ง PDF
+            const serverMessage = html
+                .match(/report-inline-validation-error[^>]*>([^<]*)</)?.[1]
+                ?.trim();
+
+            showReportError(serverMessage || 'ไม่สามารถสร้างไฟล์ Excel ได้ กรุณาตรวจสอบเงื่อนไขการออกรายงาน');
+            return;
+        }
+
+        if (isExcelTestMode) {
+            openTestPopup(await response.text());
+            return;
+        }
+
+        const fileName = response.headers.get('content-disposition')
+            ?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)?.[1]
+            ?? 'asset-report.xlsx';
+
+        const blobUrl = URL.createObjectURL(await response.blob());
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.rel = 'noopener';
+        link.download = decodeURIComponent(fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
     };
 
     /**
@@ -233,6 +289,7 @@ function initPreviewButton() {
         document.getElementById(inputId)?.addEventListener('input', () => {
             const target = document.getElementById(errorId);
             if (target) target.textContent = '';
+            clearReportError();
         });
     });
 
@@ -270,17 +327,33 @@ function initPreviewButton() {
             const fiscalYear = document.getElementById('fiscalYear').value;
             const orgId = document.getElementById('orgId').value;
             const subOrgId = document.getElementById('subOrgId').value;
-            if (!fiscalYear.trim()) {
-                const target = document.getElementById('fiscalYearError');
-                if (target) target.textContent = 'กรุณากรอกข้อมูล';
-                document.getElementById('fiscalYear')?.focus();
+            /**
+             * เซิร์ฟเวอร์บังคับทั้งสามช่อง (validateOrganizationPair) เดิมหน้านี้เช็คแต่ปีงบประมาณ
+             * กดพรีวิวแล้วค่อยถูกตีกลับมาพร้อมแถบ error จึงย้ายมาเตือนที่ช่องตรง ๆ
+             * หมายเหตุ: หน่วยงาน "กรมส่งเสริมสหกรณ์" มี org_id = 0 จึงเทียบกับค่าว่างไม่ได้
+             */
+            const hasOrg = document.getElementById('orgId').value !== '';
+            const hasSubOrg = document.getElementById('subOrgId').value !== '';
+
+            if (!fiscalYear.trim() || !hasOrg || !hasSubOrg) {
+                clearReportError();
+
+                const yearError = document.getElementById('fiscalYearError');
+                if (yearError) yearError.textContent = fiscalYear.trim() ? '' : 'กรุณากรอกข้อมูล';
+                showFieldError('orgError', 'orgSearch', hasOrg);
+                showFieldError('subOrgError', 'subOrgSearch', hasSubOrg);
+
+                if (!fiscalYear.trim()) document.getElementById('fiscalYear')?.focus();
+                else if (!hasOrg) document.getElementById('orgSearch')?.focus();
+                else document.getElementById('subOrgSearch')?.focus();
+
                 return;
             }
 
             const params = new URLSearchParams();
             params.append('fiscal_year', fiscalYear);
-            if (orgId) params.append('org_id', orgId);
-            if (subOrgId) params.append('sub_org_id', subOrgId);
+            params.append('org_id', orgId);
+            params.append('sub_org_id', subOrgId);
 
             const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
             if (isExcel) {
