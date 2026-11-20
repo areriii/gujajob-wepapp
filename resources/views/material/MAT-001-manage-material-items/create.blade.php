@@ -40,7 +40,7 @@
 
                 <div class="form-field full-width">
                     <label for="materialDescription">คุณลักษณะเฉพาะ:</label>
-                    <textarea id="materialDescription" name="MAT_DESC" rows="3" placeholder="กรอกคุณลักษณะเฉพาะของวัสดุ"></textarea>
+                    <textarea id="materialDescription" name="MAT_DESC" rows="3" data-autogrow placeholder="กรอกคุณลักษณะเฉพาะของวัสดุ"></textarea>
                 </div>
 
                 <div class="form-grid three-column">

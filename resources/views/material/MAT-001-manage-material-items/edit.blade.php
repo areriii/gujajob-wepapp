@@ -33,7 +33,7 @@
 
                 <div class="form-field full-width">
                     <label for="materialDescription">คุณลักษณะเฉพาะ:</label>
-                    <textarea id="materialDescription" name="MAT_DESC" rows="3">{{ old('MAT_DESC', $material->mat_desc) }}</textarea>
+                    <textarea id="materialDescription" name="MAT_DESC" rows="3" data-autogrow>{{ old('MAT_DESC', $material->mat_desc) }}</textarea>
                 </div>
 
                 <div class="form-grid three-column">

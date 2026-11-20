@@ -329,6 +329,9 @@ textarea {
     background: #eeeeef;
 }
 
+/* ช่องคุณลักษณะเฉพาะยืดตามข้อความได้เองจนถึงเพดานที่สคริปต์กำหนด แล้วจึงเป็น scroll
+   (ดู resources/js/components/auto-grow-textarea.js)
+   ไม่ตั้ง max-height ตรงนี้ เพราะจะไปจำกัดการลากมุมขยายด้วยมือของผู้ใช้ไปด้วย */
 .form-field textarea {
     height: auto;
     min-height: 58px;

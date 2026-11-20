@@ -31,7 +31,7 @@
 
                 <div class="form-field full-width">
                     <label>คุณลักษณะเฉพาะ:</label>
-                    <textarea rows="3" readonly>{{ $material->mat_desc }}</textarea>
+                    <textarea rows="3" data-autogrow readonly>{{ $material->mat_desc }}</textarea>
                 </div>
 
                 <div class="form-grid three-column">

@@ -503,5 +503,6 @@
     </div>
 
     @yield('page-script')
+    @vite(['resources/js/components/auto-grow-textarea.js'])
 </body>
 </html>
