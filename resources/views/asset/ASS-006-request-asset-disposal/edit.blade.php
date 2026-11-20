@@ -26,6 +26,17 @@
             </div>
         @endif
 
+        @if ((int) ($record->selling_approval_status ?? 0) === 2)
+            {{-- ใบนี้ถูกตีกลับ บันทึกแล้วจะกลับเข้าคิวพิจารณาใหม่ ต้องบอกผู้ใช้ก่อนกดบันทึก --}}
+            <div class="disposal-resubmit-note" role="status">
+                ใบแจ้งขอจำหน่ายนี้ <strong>ไม่ได้รับอนุมัติ</strong>
+                @if (! empty($record->reject_reason))
+                    — เหตุผล: {{ $record->reject_reason }}
+                @endif
+                <br>เมื่อแก้ไขแล้วกดบันทึก ระบบจะส่งใบนี้กลับเข้าคิวรอพิจารณาใหม่อีกครั้ง
+            </div>
+        @endif
+
         <section class="detail-card disposal-create-card">
             <h3 class="create-title">แก้ไขรายละเอียดการแจ้งขอจำหน่ายครุภัณฑ์</h3>
 
@@ -78,7 +89,7 @@
                                         class="@error('reason') is-invalid @enderror" required>
                                     <option value="">-- เลือกเหตุผล --</option>
                                     @foreach ($reasonOptions as $code => $label)
-                                        <option value="{{ $code }}" @selected(old('reason', $record->reason) === $code)>
+                                        <option value="{{ $code }}" @selected((string) old('reason', $record->reason ?? '') === (string) $code)>
                                             {{ $label }}
                                         </option>
                                     @endforeach

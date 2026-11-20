@@ -20,7 +20,9 @@ class AssetCategoryController extends Controller
     {
         $searchBy  = $request->string('search_by', 'all')->value();
         $keyword   = trim($request->string('keyword')->value());
-        $sort      = $request->string('sort', '')->value();
+        // ค่าเริ่มต้นเรียงตามรหัสประเภทครุภัณฑ์ ระบุเป็น 'code' ไปเลยแทนค่าว่าง
+        // เพื่อให้หัวคอลัมน์แสดงว่ากำลังเรียงด้วยอะไรอยู่ ผู้ใช้จึงกดสลับที่หัวคอลัมน์เองได้
+        $sort      = $request->string('sort', 'code')->value();
         $direction = strtolower($request->string('direction', 'asc')->value()) === 'desc' ? 'desc' : 'asc';
 
         $allowedSorts = [

@@ -1061,7 +1061,8 @@ class AssetDisposalController extends Controller
 
         return view('asset.ASS-006-request-asset-disposal.create', [
             'pageTitle'     => 'แจ้งขอจำหน่ายครุภัณฑ์',
-            'nextRequestNo' => $this->generateSellingCode(),
+            // ไม่ส่งเลขที่ไปแสดงแล้ว ระบบจะออกเลขให้ตอนกดยืนยันบันทึก
+            // ถ้าโชว์ไว้ก่อน สองคนที่เปิดหน้าพร้อมกันจะเห็นเลขเดียวกันแล้วเข้าใจผิดว่าเป็นของตัวเอง
             'userOrg'       => $userOrg,
             'reasonOptions' => self::REASON_OPTIONS,
         ]);
@@ -1085,14 +1086,17 @@ class AssetDisposalController extends Controller
                 rorg.org_name AS req_org_name,
                 s.reason,
                 s.remarks,
-                s.selling_approval_status
+                s.selling_approval_status,
+                s.reject_reason
             ")
             ->where('s.selling_code', $requestNo)
             ->whereIn('s.req_org_id', $visibleOrgIds)
             ->first();
 
         abort_if(! $record, 404);
-        abort_if((int) ($record->selling_approval_status ?? 0) !== 0, 403);
+        // ใบที่ "ไม่อนุมัติ" (สถานะ 2) ต้องแก้แล้วส่งใหม่ได้ เดิมหน้ารายการโชว์ปุ่มแก้ไขให้
+        // แต่คลิกแล้วเจอ 403 เพราะตรงนี้ยอมเฉพาะสถานะ 0 ส่วนใบที่อนุมัติแล้วยังห้ามแก้เหมือนเดิม
+        abort_unless(in_array((int) ($record->selling_approval_status ?? 0), [0, 2], true), 403);
 
         $items = DB::connection('oracle')
             ->table('ASSET_SELLING_LIST AS sl')
@@ -1134,7 +1138,8 @@ class AssetDisposalController extends Controller
             ->first();
 
         abort_if(! $record, 404);
-        abort_if((int) ($record->selling_approval_status ?? 0) !== 0, 403);
+        $previousStatus = (int) ($record->selling_approval_status ?? 0);
+        abort_unless(in_array($previousStatus, [0, 2], true), 403);
 
         $validated = $request->validate([
             'selling_req_date' => ['required', 'date'],
@@ -1197,16 +1202,26 @@ class AssetDisposalController extends Controller
         }
 
         try {
-            DB::connection('oracle')->transaction(function () use ($id, $validated, $toAdd, $toRemove, $existingMap, $user) {
+            DB::connection('oracle')->transaction(function () use ($id, $validated, $toAdd, $toRemove, $existingMap, $user, $previousStatus) {
+                $headerUpdate = [
+                    'selling_req_date' => $validated['selling_req_date'],
+                    'reason'           => $validated['reason'],
+                    'remarks'          => $validated['remarks'] ?? null,
+                    'updated_by'       => $user->id,
+                    'updated_at'       => DB::raw('SYSTIMESTAMP'),
+                ];
+
+                // แก้ใบที่ถูกตีกลับ = ส่งเข้าคิวอนุมัติใหม่ ต้องล้างผลพิจารณาเดิมออกด้วย
+                // ไม่งั้นใบจะยังค้างสถานะ "ไม่อนุมัติ" พร้อมเหตุผลเก่าที่ไม่ตรงกับข้อมูลใหม่แล้ว
+                if ($previousStatus === 2) {
+                    $headerUpdate['selling_approval_status'] = 0;
+                    $headerUpdate['selling_approval_date']   = null;
+                    $headerUpdate['reject_reason']           = null;
+                }
+
                 DB::connection('oracle')->table('ASSET_SELLING')
                     ->where('id', $id)
-                    ->update([
-                        'selling_req_date' => $validated['selling_req_date'],
-                        'reason'           => $validated['reason'],
-                        'remarks'          => $validated['remarks'] ?? null,
-                        'updated_by'       => $user->id,
-                        'updated_at'       => DB::raw('SYSTIMESTAMP'),
-                    ]);
+                    ->update($headerUpdate);
 
                 foreach ($toRemove as $assetId) {
                     $listId = (int) $existingMap[(int) $assetId]->id;
@@ -1233,7 +1248,9 @@ class AssetDisposalController extends Controller
         }
 
         return redirect()->route('asset.disposals.index')
-            ->with('success', 'บันทึกการแก้ไขแจ้งขอจำหน่ายเรียบร้อย');
+            ->with('success', $previousStatus === 2
+                ? 'บันทึกการแก้ไขและส่งใบแจ้งขอจำหน่ายเข้าพิจารณาใหม่เรียบร้อย'
+                : 'บันทึกการแก้ไขแจ้งขอจำหน่ายเรียบร้อย');
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -1416,25 +1433,37 @@ class AssetDisposalController extends Controller
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * Generate next selling_code in format SL{BBBB}{NNN} (9 chars, Thai year).
-     * Called at create() for preview and inside store() transaction for the real code.
+     * เลขที่ใบขอจำหน่ายรูปแบบ SL{BB}{NNN} เช่น SL69001 (ปี พ.ศ. 2 หลักท้าย)
+     *
+     * ของเดิมใช้ปี 4 หลัก (SL2569001) ใบเก่ายังคงเลขเดิมไว้ ไม่แก้ย้อนหลัง
+     * แต่เลขรันต้องนับต่อจากใบเก่าของปีเดียวกันด้วย ไม่งั้นจะวนกลับไปชนเลขที่มีอยู่แล้ว
+     *
+     * เรียกจากภายใน transaction ของ store() เท่านั้น ไม่ได้โชว์ให้ผู้ใช้เห็นล่วงหน้าแล้ว
+     * เพื่อกันสองคนเปิดหน้าสร้างพร้อมกันแล้วเห็นเลขเดียวกัน
      */
     private function generateSellingCode(): string
     {
-        $thaiYear = (int) date('Y') + 543; // 2026 → 2569
-        $prefix   = 'SL' . $thaiYear;
+        $thaiYear  = (int) date('Y') + 543;        // 2026 → 2569
+        $shortYear = str_pad((string) ($thaiYear % 100), 2, '0', STR_PAD_LEFT);
 
         $maxRunning = DB::connection('oracle')
             ->table('ASSET_SELLING')
-            ->where('selling_code', 'like', $prefix . '%')
+            ->where(function ($q) use ($thaiYear, $shortYear): void {
+                $q->where('selling_code', 'like', 'SL' . $thaiYear . '%')
+                    ->orWhere('selling_code', 'like', 'SL' . $shortYear . '%');
+            })
             ->get(['selling_code'])
-            ->reduce(function (int $carry, object $r): int {
-                if (preg_match('/^SL\d{4}(\d{3})$/', (string) $r->selling_code, $m) === 1) {
+            ->reduce(function (int $carry, object $r) use ($thaiYear, $shortYear): int {
+                $code = (string) $r->selling_code;
+
+                if (preg_match('/^SL' . $thaiYear . '(\d{3})$/', $code, $m) === 1
+                    || preg_match('/^SL' . $shortYear . '(\d{3})$/', $code, $m) === 1) {
                     return max($carry, (int) $m[1]);
                 }
+
                 return $carry;
             }, 0);
 
-        return $prefix . str_pad((string) ($maxRunning + 1), 3, '0', STR_PAD_LEFT);
+        return 'SL' . $shortYear . str_pad((string) ($maxRunning + 1), 3, '0', STR_PAD_LEFT);
     }
 }

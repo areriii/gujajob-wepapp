@@ -1238,3 +1238,16 @@ svg.svg-sprite {
         grid-template-columns: 1fr;
     }
 }
+/* แถบแจ้งว่าใบนี้ถูกตีกลับ และบันทึกแล้วจะส่งเข้าพิจารณาใหม่ */
+.disposal-resubmit-note {
+    margin: 0 0 14px;
+    padding: 11px 14px;
+    border: 1px solid #fcd34d;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.7;
+}

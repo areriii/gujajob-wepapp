@@ -84,8 +84,10 @@
 
                     <div class="field-group">
                         <label for="assCode">รหัสครุภัณฑ์ประจำหน่วยงาน <span class="required-mark">*</span></label>
+                        {{-- ไม่เติมรหัสเดิมมาให้แล้ว หน่วยงานต้องตั้งรหัสประจำหน่วยงานของตัวเอง
+                             รหัสที่เจนมาให้ทำให้ผู้ใช้กดบันทึกผ่านไปโดยไม่ได้ตั้งรหัสจริง --}}
                         <input id="assCode" name="ass_code" type="text" maxlength="15"
-                               value="{{ old('ass_code', $asset->ass_code ?? '') }}" required>
+                               value="{{ old('ass_code') }}" placeholder="กรอกรหัสครุภัณฑ์ประจำหน่วยงาน" required>
                         @error('ass_code')
                             <span class="field-error">{{ $message }}</span>
                         @enderror
@@ -115,7 +117,7 @@
 
                     <div class="field-group">
                         <label for="receiveRemark">หมายเหตุ</label>
-                        <textarea id="receiveRemark" name="remark" rows="1" placeholder="หมายเหตุการรับครุภัณฑ์ (ถ้ามี)">{{ old('remark') }}</textarea>
+                        <textarea id="receiveRemark" name="remark" rows="2" data-autogrow data-autogrow-max="160" placeholder="หมายเหตุการรับครุภัณฑ์ (ถ้ามี)">{{ old('remark') }}</textarea>
                     </div>
                 </div>
             </form>

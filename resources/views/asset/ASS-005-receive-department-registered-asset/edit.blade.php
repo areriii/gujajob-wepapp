@@ -120,7 +120,7 @@
 
                     <div class="field-group">
                         <label for="editRemark">หมายเหตุ</label>
-                        <textarea id="editRemark" name="remark" rows="3" placeholder="หมายเหตุการรับครุภัณฑ์ (ถ้ามี)">{{ old('remark', $asset->ass_trans_remark ?? '') }}</textarea>
+                        <textarea id="editRemark" name="remark" rows="3" data-autogrow data-autogrow-max="200" placeholder="หมายเหตุการรับครุภัณฑ์ (ถ้ามี)">{{ old('remark', $asset->ass_trans_remark ?? '') }}</textarea>
                     </div>
                 </div>
             </form>

@@ -38,7 +38,9 @@
                         <div class="detail-grid three-col">
                             <div class="field-group">
                                 <label for="requestNo">เลขที่ใบขอจำหน่ายครุภัณฑ์</label>
-                                <input id="requestNo" type="text" value="{{ $nextRequestNo }}" readonly>
+                                {{-- เลขที่ออกตอนกดยืนยันบันทึก ถ้าโชว์ไว้ก่อน สองคนที่เปิดหน้านี้พร้อมกัน
+                                     จะเห็นเลขเดียวกันแล้วนึกว่าเป็นเลขของใบตัวเอง --}}
+                                <input id="requestNo" type="text" value="" placeholder="ระบบจะออกเลขให้เมื่อกดบันทึก" readonly>
                             </div>
 
                             <div class="field-group">
@@ -74,7 +76,7 @@
                                 >
                                     <option value="">-- เลือกเหตุผล --</option>
                                     @foreach ($reasonOptions as $code => $label)
-                                        <option value="{{ $code }}" @selected(old('reason') === $code)>
+                                        <option value="{{ $code }}" @selected((string) old('reason') === (string) $code)>
                                             {{ $label }}
                                         </option>
                                     @endforeach

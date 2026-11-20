@@ -117,8 +117,13 @@
                                                 <svg aria-hidden="true"><use href="#icon-trash"></use></svg>
                                             </button>
                                         @else
+                                            @php
+                                                $editHint = $disposal->status_type === 'rejected'
+                                                    ? 'แก้ไขแล้วส่งพิจารณาใหม่'
+                                                    : 'แก้ไข';
+                                            @endphp
                                             <a class="table-action-icon table-action-edit"
-                                               aria-label="แก้ไข" data-tooltip="แก้ไข"
+                                               aria-label="{{ $editHint }}" data-tooltip="{{ $editHint }}"
                                                href="{{ route('asset.disposals.edit', $disposal->selling_code) }}">
                                                 <svg aria-hidden="true"><use href="#icon-square-pen"></use></svg>
                                             </a>
