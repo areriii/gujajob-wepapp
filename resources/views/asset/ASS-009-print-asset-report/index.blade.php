@@ -46,97 +46,128 @@
             </div>
         </section>
 
-        <section class="report-card condition-section" id="conditionSection">
+        {{-- ===== รายงานทะเบียนคุมทรัพย์สิน ===== --}}
+        <form class="report-card condition-section" id="registerConditions" method="GET" action="{{ route('asset.reports.register') }}">
             <div class="section-title">
                 <svg class="section-icon"><use href="#icon-filter-report"></use></svg>
                 <span>ส่วนที่ 2: กำหนดเงื่อนไขการออกรายงาน</span>
             </div>
 
-            <!-- Report Type 1: Asset Register -->
-            <div class="condition-grid" id="registerConditions" style="display: block;">
+            @if (empty($categoryOptions))
+                <p class="condition-empty-note">ยังไม่มีครุภัณฑ์ในหน่วยงานที่ท่านมีสิทธิ์เข้าถึง จึงยังออกรายงานนี้ไม่ได้</p>
+            @endif
+
+            <div class="condition-grid">
                 <div class="field-group">
-                    <label class="field-label">ประเภทครุภัณฑ์</label>
-                    <div class="searchable-field">
-                        <input id="categorySearch" type="text" placeholder="ค้นหาประเภท..."
-                               class="searchable-input" autocomplete="off">
-                        <div class="dropdown-suggestions" id="categorySuggestions" style="display: none;"></div>
-                        <input id="categoryId" type="hidden">
-                    </div>
+                    <label for="categoryId">ประเภทครุภัณฑ์ <span class="required">*</span></label>
+                    {{-- มีเฉพาะประเภทที่มีครุภัณฑ์อยู่จริง เลือกแล้วจะไม่เจอรายงานว่าง --}}
+                    <x-searchable-select
+                        name="category_id"
+                        id="categoryId"
+                        placeholder="เลือกประเภทครุภัณฑ์"
+                        :options="$categoryOptions"
+                        :selected="old('category_id', '')"
+                    />
                     <span class="report-field-error" id="categoryError">@error('category_id'){{ $message }}@enderror</span>
                 </div>
 
                 <div class="field-group">
-                    <label class="field-label">รหัสครุภัณฑ์</label>
-                    <div class="searchable-field">
-                        <input id="assetSearch" type="text" placeholder="ค้นหารหัสครุภัณฑ์..."
-                               class="searchable-input" autocomplete="off" disabled>
-                        <div class="dropdown-suggestions" id="assetSuggestions" style="display: none;"></div>
-                        <input id="assetId" type="hidden">
-                    </div>
-                    <span class="field-hint" id="assetSearchHint">กรุณาเลือกประเภทครุภัณฑ์ก่อน</span>
+                    <label for="assetId">รหัสครุภัณฑ์ <span class="required">*</span></label>
+                    {{-- รายการจะถูกเติมโดย script.js ตามประเภทที่เลือก --}}
+                    <x-searchable-select
+                        name="asset_id"
+                        id="assetId"
+                        placeholder="เลือกประเภทครุภัณฑ์ก่อน"
+                        :options="[]"
+                        :selected="old('asset_id', '')"
+                    />
                     <span class="report-field-error" id="assetError">@error('asset_id'){{ $message }}@enderror</span>
                 </div>
             </div>
 
-            <!-- Report Type 2: Asset Ledger -->
-            <div class="condition-grid" id="ledgerConditions" style="display: none;">
-                <div class="field-group">
-                    <label class="field-label">ปีงบประมาณ (พ.ศ.)</label>
-                    <input id="fiscalYear" type="text" placeholder="เช่น 2567" class="text-input">
-                    <span class="report-field-error" id="fiscalYearError">@error('fiscal_year'){{ $message }}@enderror</span>
-                </div>
-
-                <div class="field-group">
-                    <label class="field-label">หน่วยงาน</label>
-                    <div class="searchable-field">
-                        <input id="orgSearch" type="text" placeholder="ค้นหาหน่วยงาน..."
-                               class="searchable-input" autocomplete="off">
-                        <div class="dropdown-suggestions" id="orgSuggestions" style="display: none;"></div>
-                        <input id="orgId" type="hidden">
-                    </div>
-                    <span class="report-field-error" id="orgError">@error('org_id'){{ $message }}@enderror</span>
-                </div>
-
-                <div class="field-group">
-                    <label class="field-label">หน่วยงานย่อย</label>
-                    <div class="searchable-field">
-                        <input id="subOrgSearch" type="text" placeholder="ค้นหาหน่วยงานย่อย..."
-                               class="searchable-input" autocomplete="off">
-                        <div class="dropdown-suggestions" id="subOrgSuggestions" style="display: none;"></div>
-                        <input id="subOrgId" type="hidden">
-                    </div>
-                    <span class="report-field-error" id="subOrgError">@error('sub_org_id'){{ $message }}@enderror</span>
-                </div>
-            </div>
-
             <div class="export-panel">
-                <div class="export-format">
-                    <span class="export-label">รูปแบบไฟล์ที่ต้องการออกรายงาน:</span>
-
-                    <label class="radio-label pdf-radio">
-                        <input type="radio" name="exportFormat" value="pdf" checked>
-                        <span>PDF Document (.pdf)</span>
-                    </label>
-
-                    <label class="radio-label excel-radio">
-                        <input type="radio" name="exportFormat" value="xlsx">
-                        <span>Excel Spreadsheet (.xlsx)</span>
-                    </label>
-                </div>
+                <p class="export-hint">
+                    กดพรีวิวเพื่อดูรายงานบนหน้าจอก่อน จากหน้าพรีวิวจึงเลือกบันทึกเป็น PDF หรือ Excel ได้
+                </p>
 
                 <div class="export-actions">
-                        <button class="preview-btn" type="button" id="previewReportButton"
-                            data-register-url="{{ route('asset.reports.register') }}"
-                                data-ledger-url="{{ route('asset.reports.ledger') }}"
-                            data-register-export-url="{{ route('asset.reports.register.export') }}"
-                            data-ledger-export-url="{{ route('asset.reports.ledger.export') }}">
+                    <button class="preview-btn" type="submit">
                         <svg><use href="#icon-printer"></use></svg>
                         <span>พรีวิว</span>
                     </button>
                 </div>
             </div>
-        </section>
+        </form>
+
+        {{-- ===== รายงานทะเบียนครุภัณฑ์ ===== --}}
+        <form class="report-card condition-section" id="ledgerConditions" method="GET" action="{{ route('asset.reports.ledger') }}" style="display:none">
+            <div class="section-title">
+                <svg class="section-icon"><use href="#icon-filter-report"></use></svg>
+                <span>ส่วนที่ 2: กำหนดเงื่อนไขการออกรายงาน</span>
+            </div>
+
+            @if (empty($parentOrgOptions))
+                <p class="condition-empty-note">ยังไม่มีครุภัณฑ์สถานะ “ปกติ” ในหน่วยงานที่ท่านมีสิทธิ์เข้าถึง จึงยังออกรายงานนี้ไม่ได้</p>
+            @endif
+
+            <div class="condition-grid">
+                <div class="field-group">
+                    <label for="orgId">หน่วยงาน <span class="required">*</span></label>
+                    {{-- ค่าเริ่มต้นเป็นหน่วยงานของผู้ใช้ที่ล็อกอิน และมีเฉพาะหน่วยงานที่มีครุภัณฑ์อยู่จริง --}}
+                    <x-searchable-select
+                        name="org_id"
+                        id="orgId"
+                        placeholder="เลือกหน่วยงาน"
+                        :options="$parentOrgOptions"
+                        :selected="old('org_id', $defaultParentOrgId)"
+                    />
+                    <span class="report-field-error" id="orgError">@error('org_id'){{ $message }}@enderror</span>
+                </div>
+
+                <div class="field-group">
+                    <label for="subOrgId">หน่วยงานย่อย <span class="required">*</span></label>
+                    <x-searchable-select
+                        name="sub_org_id"
+                        id="subOrgId"
+                        placeholder="เลือกหน่วยงานย่อย"
+                        :options="$subOrgsByParent[$defaultParentOrgId] ?? []"
+                        :selected="old('sub_org_id', $defaultSubOrgId)"
+                    />
+                    <span class="report-field-error" id="subOrgError">@error('sub_org_id'){{ $message }}@enderror</span>
+                </div>
+
+                <x-fiscal-year-input
+                    id="fiscalYear"
+                    label="ปีงบประมาณ (พ.ศ.)"
+                    :value="old('fiscal_year', '')"
+                    :years="$availableFiscalYears"
+                    :currentYear="$currentFiscalYear"
+                />
+            </div>
+
+            <div class="export-panel">
+                <p class="export-hint">
+                    กดพรีวิวเพื่อดูรายงานบนหน้าจอก่อน จากหน้าพรีวิวจึงเลือกบันทึกเป็น PDF หรือ Excel ได้
+                    <span class="export-hint-years" id="fiscalYearAvailability"></span>
+                </p>
+
+                <div class="export-actions">
+                    <button class="preview-btn" type="submit">
+                        <svg><use href="#icon-printer"></use></svg>
+                        <span>พรีวิว</span>
+                    </button>
+                </div>
+            </div>
+        </form>
     </div>
+
+    <script>
+        window.ass009Options = {
+            assetsByCategory: @json($assetsByCategory),
+            subOrgsByParent: @json($subOrgsByParent),
+            fiscalYearsByOrg: @json($fiscalYearsByOrg),
+        };
+    </script>
 @endsection
 
 @section('page-script')

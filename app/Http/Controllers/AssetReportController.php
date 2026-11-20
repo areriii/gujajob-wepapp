@@ -25,12 +25,199 @@ class AssetReportController extends Controller
 
     /**
      * Display the asset report form
+     *
+     * ทุกช่องเป็น dropdown ที่มีแต่ตัวเลือกที่ออกรายงานได้จริง (ให้เหมือนหน้าจัดพิมพ์รายงานวัสดุ)
+     * เดิมเป็นช่องพิมพ์ค้นหา ผู้ใช้จึงเดาไม่ออกว่าต้องกรอกอะไรถึงจะมีข้อมูล
      */
     public function index(): View
     {
+        $visibleOrgIds = $this->orgVisibility->visibleOrgIds((int) Auth::user()->org_id);
+        $userOrgId = (int) Auth::user()->org_id;
+
+        $assetOptions = $this->assetOptions($visibleOrgIds);
+        $orgOptions = $this->organizationOptions($visibleOrgIds);
+
         return view('asset.ASS-009-print-asset-report.index', [
-            'pageTitle' => 'จัดพิมพ์รายงานครุภัณฑ์',
+            'pageTitle'            => 'จัดพิมพ์รายงานครุภัณฑ์',
+            'categoryOptions'      => $assetOptions['categories'],
+            'assetsByCategory'     => $assetOptions['assetsByCategory'],
+            'parentOrgOptions'     => $orgOptions['parents'],
+            'subOrgsByParent'      => $orgOptions['subsByParent'],
+            'fiscalYearsByOrg'     => $orgOptions['fiscalYearsByOrg'],
+            'defaultParentOrgId'   => $orgOptions['defaultParentId'],
+            'defaultSubOrgId'      => $orgOptions['defaultSubId'],
+            'availableFiscalYears' => \App\Services\FiscalYearService::availableYears(10),
+            'currentFiscalYear'    => \App\Services\FiscalYearService::current(),
+            'userOrgId'            => $userOrgId,
         ]);
+    }
+
+    /**
+     * ประเภทครุภัณฑ์ที่มีครุภัณฑ์อยู่จริง และรายการครุภัณฑ์ของแต่ละประเภท
+     *
+     * ดึงทั้งตารางแล้วกรองสิทธิ์ใน PHP เพราะรายชื่อหน่วยงานที่มองเห็นได้อาจเกินเพดาน IN ของ Oracle
+     *
+     * @param  array<int, int>  $visibleOrgIds
+     * @return array{categories: array<int, array{value: int, label: string}>, assetsByCategory: array<int, array<int, array{value: int, label: string}>>}
+     */
+    private function assetOptions(array $visibleOrgIds): array
+    {
+        $visible = array_flip($visibleOrgIds);
+
+        $rows = DB::connection('oracle')
+            ->table('ASSET')
+            ->join('ASSET_CATEGORY', 'ASSET.asscat_id', '=', 'ASSET_CATEGORY.id')
+            ->selectRaw("ASSET.id, ASSET.org_id, ASSET.ass_code, ASSET.asscat_id,
+                ASSET_CATEGORY.asscat_code, ASSET_CATEGORY.asscat_name,
+                (SELECT MAX(aa2.status) KEEP (DENSE_RANK LAST ORDER BY aa2.id)
+                 FROM ASSET_ASSIGNMENT_LIST aal2
+                 JOIN ASSET_ASSIGNMENT aa2 ON aa2.id = aal2.ass_assign_id
+                 WHERE aal2.asset_id = ASSET.id) AS aa_status")
+            ->orderBy('ASSET_CATEGORY.asscat_code')
+            ->orderBy('ASSET.ass_code')
+            ->get()
+            ->filter(fn ($row) => isset($visible[(int) $row->org_id]));
+
+        $categories = [];
+        $assetsByCategory = [];
+
+        foreach ($rows as $row) {
+            $categoryId = (int) $row->asscat_id;
+            $categories[$categoryId] ??= [
+                'value' => $categoryId,
+                'label' => trim(((string) $row->asscat_code) . ' ' . ((string) $row->asscat_name)),
+            ];
+
+            // รหัสครุภัณฑ์จะต่อท้ายรหัสประเภทก็ต่อเมื่อครุภัณฑ์ถูกจัดสรรแล้ว (เหมือน AssetDisplayService)
+            $code = ((string) ($row->aa_status ?? '') === '2' && trim((string) $row->ass_code) !== '')
+                ? trim($row->asscat_code . ' ' . $row->ass_code)
+                : (string) $row->asscat_code;
+
+            $assetsByCategory[$categoryId][] = [
+                'value' => (int) $row->id,
+                'label' => $code . ' — ' . $row->asscat_name,
+            ];
+        }
+
+        return [
+            'categories' => array_values($categories),
+            'assetsByCategory' => $assetsByCategory,
+        ];
+    }
+
+    /**
+     * คู่หน่วยงาน/หน่วยงานย่อยที่มีครุภัณฑ์อยู่จริง พร้อมปีงบประมาณที่มีข้อมูลของแต่ละคู่
+     *
+     * @param  array<int, int>  $visibleOrgIds
+     */
+    private function organizationOptions(array $visibleOrgIds): array
+    {
+        $visible = array_flip($visibleOrgIds);
+        $userOrgId = (int) Auth::user()->org_id;
+
+        // ปีงบประมาณไทยเริ่ม 1 ต.ค. เดือน 10-12 จึงนับเป็นปีถัดไป
+        //
+        // เงื่อนไขสถานะต้องตรงกับ assetLedgerData() ทุกตัว ไม่ใช่แค่ ASSET.ass_status
+        // ครุภัณฑ์ที่จำหน่ายจบแล้วจะมีสถานะที่ใช้จริงเป็น 4/6 แม้ ass_status ยังเป็น 2 อยู่
+        // ถ้ากรองด้วย ass_status เฉย ๆ dropdown จะเสนอหน่วยงาน/ปีที่กดแล้วได้รายงานว่าง
+        $rows = DB::connection('oracle')->select("
+            WITH completed_disposals AS (
+                SELECT sl.ass_id, CASE WHEN s.reason = '3' THEN '6' ELSE '4' END AS final_status
+                FROM ASSET_SELLING s
+                JOIN ASSET_SELLING_LIST sl ON sl.selling_id = s.id
+                WHERE s.reason IN ('1','2') AND s.selling_approval_status = 1
+                GROUP BY s.id, sl.ass_id, s.reason, s.buyer
+                HAVING COUNT(*) > 0 AND COUNT(*) = COUNT(sl.selling_real_price) AND TRIM(s.buyer) IS NOT NULL
+                UNION ALL
+                SELECT sl.ass_id, '6' AS final_status
+                FROM ASSET_SELLING s
+                JOIN ASSET_SELLING_LIST sl ON sl.selling_id = s.id
+                WHERE s.reason = '3' AND s.selling_approval_status = 1
+                GROUP BY s.id, sl.ass_id, s.reason
+                HAVING COUNT(*) > 0 AND COUNT(*) = COUNT(sl.selling_real_price)
+            )
+            SELECT a.org_id,
+                   o.org_name,
+                   o.org_org_id AS parent_id,
+                   p.org_name AS parent_name,
+                   CASE WHEN EXTRACT(MONTH FROM a.inspect_date) >= 10
+                        THEN EXTRACT(YEAR FROM a.inspect_date) + 544
+                        ELSE EXTRACT(YEAR FROM a.inspect_date) + 543 END AS fiscal_year
+            FROM ASSET a
+            JOIN GLB_ORGANIZATION o ON o.org_id = a.org_id
+            LEFT JOIN GLB_ORGANIZATION p ON p.org_id = o.org_org_id
+            LEFT JOIN completed_disposals cd ON cd.ass_id = a.id
+            WHERE a.inspect_date IS NOT NULL
+              AND COALESCE(cd.final_status, a.ass_status) = '2'
+        ");
+
+        $parents = [];
+        $subsByParent = [];
+        $seenSub = [];
+        $fiscalYearsByOrg = [];
+
+        foreach ($rows as $row) {
+            $orgId = (int) $row->org_id;
+            $parentId = $row->parent_id === null ? null : (int) $row->parent_id;
+
+            if ($parentId === null || ! isset($visible[$orgId]) || ! isset($visible[$parentId])) {
+                continue;
+            }
+
+            $parents[$parentId] ??= ['value' => $parentId, 'label' => (string) $row->parent_name];
+
+            if (! isset($seenSub[$parentId][$orgId])) {
+                $seenSub[$parentId][$orgId] = true;
+                $subsByParent[$parentId][] = ['value' => $orgId, 'label' => (string) $row->org_name];
+            }
+
+            $year = (int) $row->fiscal_year;
+            $fiscalYearsByOrg[$orgId][$year] = true;
+        }
+
+        foreach ($fiscalYearsByOrg as $orgId => $years) {
+            $list = array_keys($years);
+            rsort($list);
+            $fiscalYearsByOrg[$orgId] = $list;
+        }
+
+        foreach ($subsByParent as &$subs) {
+            usort($subs, fn ($a, $b) => strcmp($a['label'], $b['label']));
+        }
+        unset($subs);
+
+        // ค่าเริ่มต้น: หน่วยงานของผู้ใช้ที่ล็อกอิน ถ้าหน่วยงานนั้นไม่มีครุภัณฑ์ก็ใช้คู่แรกที่มี
+        $defaultParentId = null;
+        $defaultSubId = null;
+
+        foreach ($subsByParent as $parentId => $subs) {
+            foreach ($subs as $sub) {
+                if ($sub['value'] === $userOrgId) {
+                    $defaultParentId = $parentId;
+                    $defaultSubId = $sub['value'];
+                    break 2;
+                }
+            }
+        }
+
+        if ($defaultParentId === null) {
+            $firstParent = array_key_first($subsByParent);
+            if ($firstParent !== null) {
+                $defaultParentId = $firstParent;
+                $defaultSubId = $subsByParent[$firstParent][0]['value'];
+            }
+        }
+
+        $parentList = array_values($parents);
+        usort($parentList, fn ($a, $b) => strcmp($a['label'], $b['label']));
+
+        return [
+            'parents' => $parentList,
+            'subsByParent' => $subsByParent,
+            'fiscalYearsByOrg' => $fiscalYearsByOrg,
+            'defaultParentId' => $defaultParentId,
+            'defaultSubId' => $defaultSubId,
+        ];
     }
 
     /**
@@ -386,10 +573,8 @@ class AssetReportController extends Controller
 
     public function exportAssetLedger(Request $request)
     {
-        \Log::info('exportAssetLedger: START');
         $data = $this->assetLedgerData($request);
         $fiscalYear = $data['fiscalYear'];
-        \Log::info('exportAssetLedger: assetLedgerData returned, assets count: ' . count($data['assets']->getCollection()));
         $rows = $data['assets']->getCollection()->values()->map(function ($asset, $index) use ($fiscalYear) {
             $code = trim((string) ($asset->asscat_code ?? '')) . ' ' . trim((string) ($asset->ass_code ?? ''));
 
@@ -412,10 +597,7 @@ class AssetReportController extends Controller
             ];
         })->all();
 
-        \Log::info('exportAssetLedger: mapped rows, count: ' . count($rows));
-
         if (in_array(app()->environment(), ['local', 'testing'], true) && $request->boolean('xlsx_test')) {
-            \Log::info('exportAssetLedger: TEST MODE requested');
             return response()->view('asset.ASS-009-print-asset-report.excel-ledger-layout-test', [
                 'headers' => ['ลำดับ', 'ปีงบประมาณ', 'วันที่ตรวจรับ', 'หมวดครุภัณฑ์', 'ประเภทครุภัณฑ์', 'รหัสครุภัณฑ์', 'รายการ/รายละเอียด', 'ยี่ห้อ/รุ่น', 'Serial No.', 'จำนวน', 'หน่วยนับ', 'ราคาที่ได้มาต่อหน่วย', 'กลุ่ม/ฝ่าย', 'หมายเหตุ', 'สถานะ'],
                 'rows' => $rows,
@@ -423,8 +605,6 @@ class AssetReportController extends Controller
                 'fiscalYear' => $fiscalYear,
             ]);
         }
-
-        \Log::info('exportAssetLedger: calling xlsx->download()');
         return $this->xlsx->structuredAssetLedger(
             'asset-ledger-report.xlsx',
             'รายงานทะเบียนครุภัณฑ์ ประจำปีงบประมาณ พ.ศ. ' . $fiscalYear,

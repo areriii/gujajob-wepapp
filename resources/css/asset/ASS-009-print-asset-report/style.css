@@ -382,3 +382,33 @@
         box-shadow: none;
     }
 }
+
+/* ===== หน้าเงื่อนไขไม่มีตัวเลือกไฟล์แล้ว ย้ายไปอยู่หน้าพรีวิว ===== */
+
+.export-panel .export-hint {
+    margin: 0;
+    max-width: 62ch;
+    color: #5b6678;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.export-hint-years {
+    display: block;
+    margin-top: 4px;
+    color: #1e40af;
+    font-weight: 700;
+}
+
+.condition-empty-note {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border: 1px solid #fcd34d;
+    border-left: 3px solid #f59e0b;
+    border-radius: 6px;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 700;
+}

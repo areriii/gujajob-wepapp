@@ -1,406 +1,161 @@
-class SearchableDropdown {
-    constructor(inputSelector, suggestionsSelector, hiddenInputSelector, apiUrl, options = {}) {
-        this.input = document.querySelector(inputSelector);
-        this.suggestionsContainer = document.querySelector(suggestionsSelector);
-        this.hiddenInput = document.querySelector(hiddenInputSelector);
-        this.apiUrl = apiUrl;
-        this.options = options;
-        
-        if (!this.input) return;
-        
-        this.debounceTimer = null;
-        this.init();
-    }
-    
-    init() {
-        this.input.addEventListener('input', () => this.handleInput());
-        this.input.addEventListener('focus', () => {
-            if (this.input.value.length > 0) {
-                this.suggestionsContainer.style.display = 'block';
-            }
-        });
-        
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('[class*="searchable"]')) {
-                this.suggestionsContainer.style.display = 'none';
-            }
-        });
-    }
-    
-    handleInput() {
-        const query = this.input.value.trim();
-        
-        clearTimeout(this.debounceTimer);
-        
-        // Typing invalidates any previously picked item.
-        this.hiddenInput.value = '';
-        this.options.onChange?.();
-        
-        if (query.length === 0 || this.options.isBlocked?.()) {
-            this.suggestionsContainer.style.display = 'none';
-            return;
-        }
-        
-        this.debounceTimer = setTimeout(() => {
-            this.fetchSuggestions(query);
-        }, 300);
-    }
-    
-    fetchSuggestions(query) {
-        const params = new URLSearchParams({ q: query, ...(this.options.extraParams?.() ?? {}) });
-        
-        fetch(`${this.apiUrl}?${params.toString()}`)
-            .then(response => response.json())
-            .then(payload => this.renderSuggestions(Array.isArray(payload) ? payload : payload?.data))
-            .catch(error => {
-                console.error('Error fetching suggestions:', error);
-                this.suggestionsContainer.style.display = 'none';
-            });
-    }
-    
-    renderSuggestions(data) {
-        this.suggestionsContainer.innerHTML = '';
-        
-        if (!Array.isArray(data) || data.length === 0) {
-            this.suggestionsContainer.style.display = 'none';
-            return;
-        }
-        
-        data.forEach(item => {
-            const suggestionItem = document.createElement('div');
-            suggestionItem.className = 'suggestion-item';
-            suggestionItem.textContent = this.formatSuggestion(item);
-            suggestionItem.addEventListener('click', () => this.selectItem(item));
-            this.suggestionsContainer.appendChild(suggestionItem);
-        });
-        
-        this.suggestionsContainer.style.display = 'block';
-    }
-    
-    formatSuggestion(item) {
-        if (item.code && item.name) {
-            return `${item.code} - ${item.name}`;
-        } else if (item.name) {
-            return item.name;
-        }
-        return JSON.stringify(item);
-    }
-    
-    selectItem(item) {
-        this.input.value = this.formatSuggestion(item);
-        this.hiddenInput.value = item.id;
-        this.suggestionsContainer.style.display = 'none';
-        this.options.onSelect?.(item);
-    }
-    
-    clear() {
-        if (!this.input) return;
-        clearTimeout(this.debounceTimer);
-        this.input.value = '';
-        this.hiddenInput.value = '';
-        this.suggestionsContainer.innerHTML = '';
-        this.suggestionsContainer.style.display = 'none';
-    }
+/**
+ * หน้ากำหนดเงื่อนไขของ ASS-009
+ *
+ * เดิมทุกช่องเป็นช่องพิมพ์ค้นหาที่ยิง API เอง และปุ่มเดียวทำทั้งพรีวิวและดาวน์โหลด
+ * ตามรูปแบบเดียวกับหน้าจัดพิมพ์รายงานวัสดุ ตอนนี้
+ *   - ทุกช่องเป็น dropdown ที่มีแต่ตัวเลือกที่ออกรายงานได้จริง
+ *   - หน่วยงานตั้งค่าเริ่มต้นตามผู้ใช้ที่ล็อกอิน
+ *   - ฟอร์มส่งแบบ GET ไปหน้าพรีวิว แล้วค่อยเลือก PDF/Excel จากหน้านั้น
+ */
+
+import { initSearchableSelects, resetSearchableSelect } from '../../components/searchable-select.js';
+
+const options = window.ass009Options ?? { assetsByCategory: {}, subOrgsByParent: {}, fiscalYearsByOrg: {} };
+
+function setError(id, message) {
+    const target = document.getElementById(id);
+    if (target) target.textContent = message;
 }
 
-// Report type selection
+/** สลับระหว่างรายงานสองแบบ พร้อมล้างค่าของฟอร์มที่ซ่อนไป */
 function initReportTypeSelection() {
     const registerBtn = document.querySelector('[data-report-type="register"]');
     const ledgerBtn = document.querySelector('[data-report-type="ledger"]');
-    const registerConditions = document.getElementById('registerConditions');
-    const ledgerConditions = document.getElementById('ledgerConditions');
-    
-    registerBtn?.addEventListener('click', () => {
-        registerBtn.classList.add('active');
-        ledgerBtn.classList.remove('active');
-        registerConditions.style.display = 'block';
-        ledgerConditions.style.display = 'none';
-        clearLedgerFields();
-    });
-    
-    ledgerBtn?.addEventListener('click', () => {
-        ledgerBtn.classList.add('active');
-        registerBtn.classList.remove('active');
-        ledgerConditions.style.display = 'block';
-        registerConditions.style.display = 'none';
-        clearRegisterFields();
-    });
-}
+    const registerForm = document.getElementById('registerConditions');
+    const ledgerForm = document.getElementById('ledgerConditions');
 
-// Clear field functions
-function clearRegisterFields() {
-    dropdowns.category?.clear();
-    dropdowns.asset?.clear();
-    syncAssetFieldState();
-}
-
-function clearLedgerFields() {
-    document.getElementById('fiscalYear').value = '';
-    dropdowns.org?.clear();
-    dropdowns.subOrg?.clear();
-}
-
-// The asset-code field only searches once a category has been picked.
-function syncAssetFieldState() {
-    const hasCategory = Boolean(document.getElementById('categoryId')?.value);
-    const assetInput = document.getElementById('assetSearch');
-    const hint = document.getElementById('assetSearchHint');
-    
-    if (assetInput) assetInput.disabled = !hasCategory;
-    if (hint) hint.style.display = hasCategory ? 'none' : '';
-}
-
-// Preview button
-function initPreviewButton() {
-    const previewBtn = document.getElementById('previewReportButton');
-    const exportFormatInputs = document.querySelectorAll('input[name="exportFormat"]');
-    const isExcelTestMode = new URLSearchParams(window.location.search).get('xlsx_test') === '1';
-
-    const setActionLabel = () => {
-        const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
-        previewBtn?.classList.toggle('download-btn', isExcel);
-        previewBtn?.classList.toggle('preview-btn', !isExcel);
-        const label = previewBtn?.querySelector('span');
-        if (label) label.textContent = isExcel ? 'ดาวน์โหลด' : 'พรีวิว';
+    const show = (activeBtn, inactiveBtn, shownForm, hiddenForm) => {
+        activeBtn.classList.add('active');
+        inactiveBtn.classList.remove('active');
+        shownForm.style.display = '';
+        hiddenForm.style.display = 'none';
     };
 
-    exportFormatInputs.forEach((input) => input.addEventListener('change', setActionLabel));
-    setActionLabel();
+    registerBtn?.addEventListener('click', () => show(registerBtn, ledgerBtn, registerForm, ledgerForm));
+    ledgerBtn?.addEventListener('click', () => show(ledgerBtn, registerBtn, ledgerForm, registerForm));
+}
 
-    const openTestPopup = (html) => {
-        const overlay = document.createElement('div');
-        overlay.className = 'pdf-test-modal';
-        overlay.innerHTML = `
-            <div class="pdf-test-modal__dialog">
-                <button type="button" class="pdf-test-modal__close">ปิด</button>
-                <iframe class="pdf-test-modal__frame" title="Excel layout test"></iframe>
-            </div>
-        `;
-        const frame = overlay.querySelector('iframe');
-        frame.srcdoc = html;
-        const close = () => overlay.remove();
-        overlay.querySelector('.pdf-test-modal__close').addEventListener('click', close);
-        overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) close();
-        });
-        document.body.appendChild(overlay);
-    };
+/** รหัสครุภัณฑ์ขึ้นกับประเภทที่เลือก จึงต้องเติมรายการใหม่ทุกครั้งที่ประเภทเปลี่ยน */
+function initDependentAssetField() {
+    const categoryField = document.getElementById('categoryId');
+    const assetField = document.getElementById('assetId');
+    if (!categoryField || !assetField) return;
 
-    /**
-     * แถบแจ้งเตือนระดับหน้า ใช้ class เดียวกับที่ฝั่งเซิร์ฟเวอร์ render ตอน redirect กลับมา
-     * ถ้าตอนนี้ยังไม่มีแถบอยู่ในหน้า ก็สร้างแทรกไว้เหนือ "ส่วนที่ 1" ให้
-     */
-    const showReportError = (message) => {
-        const page = document.querySelector('.report-page');
-        if (!page) return;
+    const assetInput = assetField.closest('.guja-autocomplete')?.querySelector('.guja-autocomplete__input');
 
-        let box = page.querySelector('.report-inline-validation-error');
-        if (!box) {
-            box = document.createElement('div');
-            box.className = 'report-inline-validation-error';
-            page.querySelector('.report-type-section')?.before(box);
+    const syncAssets = () => {
+        const categoryId = String(categoryField.value || '');
+        const list = options.assetsByCategory[categoryId] ?? [];
+
+        resetSearchableSelect('assetId', list, true);
+
+        const wrapper = assetField.closest('.guja-autocomplete');
+        wrapper?.classList.toggle('guja-autocomplete--disabled', categoryId === '');
+
+        if (assetInput) {
+            assetInput.placeholder = categoryId === ''
+                ? 'เลือกประเภทครุภัณฑ์ก่อน'
+                : 'เลือกรหัสครุภัณฑ์';
+            assetInput.disabled = categoryId === '';
         }
 
-        box.textContent = message;
-        box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setError('assetError', '');
     };
 
-    const clearReportError = () => {
-        document.querySelector('.report-page .report-inline-validation-error')?.remove();
+    categoryField.addEventListener('change', syncAssets);
+    syncAssets();
+}
+
+/** หน่วยงานย่อยขึ้นกับหน่วยงาน และปีที่มีข้อมูลขึ้นกับหน่วยงานย่อย */
+function initDependentOrgFields() {
+    const orgField = document.getElementById('orgId');
+    const subOrgField = document.getElementById('subOrgId');
+    const fiscalYearField = document.getElementById('fiscalYear');
+    const availabilityNote = document.getElementById('fiscalYearAvailability');
+    if (!orgField || !subOrgField) return;
+
+    const syncYears = () => {
+        const years = options.fiscalYearsByOrg[String(subOrgField.value || '')] ?? [];
+
+        if (availabilityNote) {
+            availabilityNote.textContent = years.length
+                ? `หน่วยงานย่อยนี้มีข้อมูลในปีงบประมาณ ${years.join(', ')}`
+                : '';
+        }
+
+        // ปีงบประมาณปัจจุบันอาจยังไม่มีครุภัณฑ์เลย เลือกปีล่าสุดที่มีข้อมูลให้แทน
+        if (fiscalYearField && years.length) {
+            fiscalYearField.value = years[0];
+        }
     };
 
-    const SPREADSHEET_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const syncSubOrgs = () => {
+        const parentId = String(orgField.value || '');
+        const list = options.subOrgsByParent[parentId] ?? [];
 
-    /**
-     * เดิมปุ่ม Excel ยิง <a download> ตรง ๆ เมื่อเงื่อนไขไม่ผ่าน เซิร์ฟเวอร์จะ redirect
-     * กลับมาเป็นหน้า HTML แต่เบราว์เซอร์บันทึก HTML นั้นเป็น asset-report.xlsx
-     * ผู้ใช้ได้ไฟล์ที่ Excel เปิดไม่ขึ้นโดยไม่มีข้อความบอกสาเหตุเลย
-     * จึงต้องอ่าน response ก่อน แล้วดาวน์โหลดเฉพาะตอนที่ได้ไฟล์ spreadsheet จริง
-     */
-    const requestExcel = async (url) => {
-        const response = await fetch(url, {
-            credentials: 'same-origin',
-            headers: { Accept: `text/html, ${SPREADSHEET_TYPE}` },
-        });
-        if (!response.ok) throw new Error(`Excel request failed with status ${response.status}`);
+        resetSearchableSelect('subOrgId', list, false);
 
-        const contentType = response.headers.get('content-type') ?? '';
+        // ถ้าหน่วยงานย่อยที่ค้างอยู่ไม่ได้อยู่ใต้หน่วยงานใหม่ ให้เลือกตัวแรกให้เลย
+        // ผู้ใช้จะได้ไม่ต้องกดสองชั้นก่อนดูรายงาน และไม่เหลือคู่ที่เซิร์ฟเวอร์ปฏิเสธ
+        const stillValid = list.some((option) => String(option.value) === String(subOrgField.value));
 
-        if (!contentType.includes('spreadsheetml')) {
-            const html = await response.text();
+        if (! stillValid) {
+            const picked = list[0] ?? null;
+            subOrgField.value = picked ? String(picked.value) : '';
 
-            if (isExcelTestMode) {
-                openTestPopup(html);
-                return;
+            const subInput = subOrgField.closest('.guja-autocomplete')?.querySelector('.guja-autocomplete__input');
+            if (subInput) subInput.value = picked ? picked.label : '';
+        }
+
+        syncYears();
+        setError('subOrgError', '');
+    };
+
+    orgField.addEventListener('change', syncSubOrgs);
+    subOrgField.addEventListener('change', syncYears);
+
+    syncSubOrgs();
+}
+
+/** ช่องว่างต้องเตือนที่ช่อง ไม่ใช่ปล่อยให้เซิร์ฟเวอร์ตีกลับมาเป็นแถบแดง */
+function initFormValidation() {
+    const rules = {
+        registerConditions: [
+            { field: 'categoryId', error: 'categoryError', message: 'กรุณาเลือกประเภทครุภัณฑ์' },
+            { field: 'assetId', error: 'assetError', message: 'กรุณาเลือกรหัสครุภัณฑ์' },
+        ],
+        ledgerConditions: [
+            { field: 'orgId', error: 'orgError', message: 'กรุณาเลือกหน่วยงาน' },
+            { field: 'subOrgId', error: 'subOrgError', message: 'กรุณาเลือกหน่วยงานย่อย' },
+            { field: 'fiscalYear', error: null, message: 'กรุณากรอกปีงบประมาณ' },
+        ],
+    };
+
+    Object.entries(rules).forEach(([formId, fields]) => {
+        const form = document.getElementById(formId);
+
+        form?.addEventListener('submit', (event) => {
+            let firstInvalid = null;
+
+            fields.forEach(({ field, error, message }) => {
+                const element = document.getElementById(field);
+                const isEmpty = String(element?.value || '').trim() === '';
+
+                if (error) setError(error, isEmpty ? message : '');
+                if (isEmpty && ! firstInvalid) firstInvalid = element;
+            });
+
+            if (firstInvalid) {
+                event.preventDefault();
+                const visible = firstInvalid.closest('.guja-autocomplete')?.querySelector('.guja-autocomplete__input') ?? firstInvalid;
+                visible.focus();
             }
-
-            // ดึงข้อความจากแถบ error ที่เซิร์ฟเวอร์ render มาให้ เพื่อบอกเหตุผลเดียวกับฝั่ง PDF
-            const serverMessage = html
-                .match(/report-inline-validation-error[^>]*>([^<]*)</)?.[1]
-                ?.trim();
-
-            showReportError(serverMessage || 'ไม่สามารถสร้างไฟล์ Excel ได้ กรุณาตรวจสอบเงื่อนไขการออกรายงาน');
-            return;
-        }
-
-        if (isExcelTestMode) {
-            openTestPopup(await response.text());
-            return;
-        }
-
-        const fileName = response.headers.get('content-disposition')
-            ?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)?.[1]
-            ?? 'asset-report.xlsx';
-
-        const blobUrl = URL.createObjectURL(await response.blob());
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.rel = 'noopener';
-        link.download = decodeURIComponent(fileName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(blobUrl);
-    };
-
-    /**
-     * ช่องค้นหาพวกนี้เก็บค่าจริงไว้ใน hidden input ซึ่งตั้งค่าเมื่อกดเลือกจากรายการเท่านั้น
-     * ถ้าผู้ใช้พิมพ์เองแล้วไม่ได้เลือก ช่องจะดูเหมือนกรอกแล้วแต่ยังไม่มีค่า จึงต้องแยกข้อความ
-     */
-    function showFieldError(errorId, inputId, currentValue) {
-        const target = document.getElementById(errorId);
-        if (!target) return;
-
-        if (currentValue) {
-            target.textContent = '';
-            return;
-        }
-
-        const input = document.getElementById(inputId);
-        target.textContent = input && input.value.trim() !== ''
-            ? 'กรุณาเลือกจากรายการที่ระบบแสดง'
-            : 'กรุณากรอกข้อมูล';
-    }
-
-    // ล้างข้อความเตือนทันทีที่ผู้ใช้เริ่มแก้ไข
-    [['categorySearch', 'categoryError'], ['assetSearch', 'assetError'],
-     ['orgSearch', 'orgError'], ['subOrgSearch', 'subOrgError'],
-     ['fiscalYear', 'fiscalYearError']].forEach(([inputId, errorId]) => {
-        document.getElementById(inputId)?.addEventListener('input', () => {
-            const target = document.getElementById(errorId);
-            if (target) target.textContent = '';
-            clearReportError();
         });
     });
-
-    previewBtn?.addEventListener('click', async () => {
-        const registerConditions = document.getElementById('registerConditions');
-        const isRegisterType = registerConditions.style.display !== 'none';
-
-        if (isRegisterType) {
-            const categoryId = document.getElementById('categoryId').value;
-            const assetId = document.getElementById('assetId').value;
-            if (!categoryId || !assetId) {
-                // เดิมแค่ return เฉย ๆ ผู้ใช้กดพรีวิวแล้วไม่มีอะไรเกิดขึ้นเลย เหมือนปุ่มเสีย
-                showFieldError('categoryError', 'categorySearch', categoryId);
-                showFieldError('assetError', 'assetSearch', assetId);
-                return;
-            }
-
-            const params = new URLSearchParams();
-            params.set('category_id', categoryId);
-            params.set('asset_id', assetId);
-
-            const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
-            if (isExcel) {
-                if (isExcelTestMode) params.set('xlsx_test', '1');
-                try {
-                    await requestExcel(`${previewBtn.dataset.registerExportUrl}?${params}`);
-                } catch (error) {
-                    console.error('Failed to generate the Excel export:', error);
-                }
-                return;
-            }
-
-            window.location.href = `${previewBtn.dataset.registerUrl}?${params}`;
-        } else {
-            const fiscalYear = document.getElementById('fiscalYear').value;
-            const orgId = document.getElementById('orgId').value;
-            const subOrgId = document.getElementById('subOrgId').value;
-            /**
-             * เซิร์ฟเวอร์บังคับทั้งสามช่อง (validateOrganizationPair) เดิมหน้านี้เช็คแต่ปีงบประมาณ
-             * กดพรีวิวแล้วค่อยถูกตีกลับมาพร้อมแถบ error จึงย้ายมาเตือนที่ช่องตรง ๆ
-             * หมายเหตุ: หน่วยงาน "กรมส่งเสริมสหกรณ์" มี org_id = 0 จึงเทียบกับค่าว่างไม่ได้
-             */
-            const hasOrg = document.getElementById('orgId').value !== '';
-            const hasSubOrg = document.getElementById('subOrgId').value !== '';
-
-            if (!fiscalYear.trim() || !hasOrg || !hasSubOrg) {
-                clearReportError();
-
-                const yearError = document.getElementById('fiscalYearError');
-                if (yearError) yearError.textContent = fiscalYear.trim() ? '' : 'กรุณากรอกข้อมูล';
-                showFieldError('orgError', 'orgSearch', hasOrg);
-                showFieldError('subOrgError', 'subOrgSearch', hasSubOrg);
-
-                if (!fiscalYear.trim()) document.getElementById('fiscalYear')?.focus();
-                else if (!hasOrg) document.getElementById('orgSearch')?.focus();
-                else document.getElementById('subOrgSearch')?.focus();
-
-                return;
-            }
-
-            const params = new URLSearchParams();
-            params.append('fiscal_year', fiscalYear);
-            params.append('org_id', orgId);
-            params.append('sub_org_id', subOrgId);
-
-            const isExcel = document.querySelector('input[name="exportFormat"]:checked')?.value === 'xlsx';
-            if (isExcel) {
-                if (isExcelTestMode) params.set('xlsx_test', '1');
-                try {
-                    await requestExcel(`${previewBtn.dataset.ledgerExportUrl}?${params}`);
-                } catch (error) {
-                    console.error('Failed to generate the ledger Excel export:', error);
-                }
-                return;
-            }
-
-            window.location.href = `${previewBtn.dataset.ledgerUrl}?${params}`;
-        }
-    });
 }
 
-// Initialize on page load
-const dropdowns = {};
-
-document.addEventListener('DOMContentLoaded', () => {
-    initReportTypeSelection();
-    
-    // Initialize searchable dropdowns
-    const resetAsset = () => {
-        dropdowns.asset?.clear();
-        syncAssetFieldState();
-    };
-    
-    dropdowns.category = new SearchableDropdown('#categorySearch', '#categorySuggestions', '#categoryId', '/api/asset/categories/search', {
-        onSelect: resetAsset,
-        onChange: resetAsset,
-    });
-    dropdowns.asset = new SearchableDropdown('#assetSearch', '#assetSuggestions', '#assetId', '/api/asset/search', {
-        isBlocked: () => !document.getElementById('categoryId').value,
-        extraParams: () => ({ category_id: document.getElementById('categoryId').value }),
-    });
-    dropdowns.org = new SearchableDropdown('#orgSearch', '#orgSuggestions', '#orgId', '/api/asset/organizations/search', {
-        onSelect: () => dropdowns.subOrg?.clear(),
-        onChange: () => dropdowns.subOrg?.clear(),
-    });
-    dropdowns.subOrg = new SearchableDropdown('#subOrgSearch', '#subOrgSuggestions', '#subOrgId', '/api/asset/sub-organizations/search', {
-        isBlocked: () => !document.getElementById('orgId').value,
-        extraParams: () => ({ parent_org_id: document.getElementById('orgId').value }),
-    });
-    
-    syncAssetFieldState();
-    
-    initPreviewButton();
-});
+initSearchableSelects();
+initReportTypeSelection();
+initDependentAssetField();
+initDependentOrgFields();
+initFormValidation();

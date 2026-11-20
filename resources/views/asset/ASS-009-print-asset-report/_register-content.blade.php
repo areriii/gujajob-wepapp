@@ -103,12 +103,18 @@
     @if ($showActions ?? false)
         <div class="report-actions report-register-actions">
             <a href="{{ route('asset.reports.index') }}" class="back-btn"><span>ย้อนกลับ</span></a>
+            <a
+                class="excel-btn"
+                href="{{ route('asset.reports.register.export', request()->only(['category_id', 'asset_id'])) }}"
+            >
+                <svg><use href="#icon-download-report"></use></svg><span>ดาวน์โหลด Excel</span>
+            </a>
             <button
                 type="button"
                 class="print-btn"
                 data-pdf-url="{{ route('asset.reports.register.download', array_merge(request()->only(['category_id', 'asset_id']), request()->boolean('pdf_test') ? ['pdf_test' => 1] : [])) }}"
             >
-                <svg><use href="#icon-printer"></use></svg><span>พิมพ์</span>
+                <svg><use href="#icon-printer"></use></svg><span>พิมพ์ PDF</span>
             </button>
         </div>
     @endif
